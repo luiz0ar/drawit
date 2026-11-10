@@ -7,6 +7,12 @@ import {
   Diamond,
   Triangle,
   Minus,
+  ArrowRight,
+  Database,
+  Server,
+  Globe,
+  Layers,
+  Cloud,
   ZoomIn,
   ZoomOut,
   Maximize2,
@@ -67,7 +73,6 @@ export const Whiteboard: React.FC = () => {
     };
   }, []);
 
-  // Synchronize theme changes with canvas background & default colors
   useEffect(() => {
     if (engineRef.current) {
       engineRef.current.setTheme(resolvedTheme);
@@ -114,8 +119,9 @@ export const Whiteboard: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background select-none">
-      {/* Top Floating Toolbar (Lucide standard market icons only, strictly NO emojis) */}
+      {/* Top Floating Toolbar with Market Standard Lucide Icons (Zero Emojis) */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1.5 rounded-lg border bg-card/95 backdrop-blur shadow-md text-foreground">
+        {/* Navigation / Selection */}
         <button
           title="Select (V)"
           onClick={() => handleToolSelect('select')}
@@ -138,6 +144,7 @@ export const Whiteboard: React.FC = () => {
 
         <div className="w-[1px] h-5 bg-border mx-1" />
 
+        {/* Geometric Shapes */}
         <button
           title="Rectangle (R)"
           onClick={() => handleToolSelect('rectangle')}
@@ -186,6 +193,70 @@ export const Whiteboard: React.FC = () => {
           }`}
         >
           <Minus className="w-4 h-4" />
+        </button>
+
+        {/* Magnetic Connected Arrow */}
+        <button
+          title="Magnetic Arrow Connector (A)"
+          onClick={() => handleToolSelect('arrow')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'arrow' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <ArrowRight className="w-4 h-4" />
+        </button>
+
+        <div className="w-[1px] h-5 bg-border mx-1" />
+
+        {/* IT Architecture Native Components Library */}
+        <button
+          title="Database (SQL)"
+          onClick={() => handleToolSelect('database')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'database' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Database className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Server / Service"
+          onClick={() => handleToolSelect('server')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'server' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Server className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Web Client / Browser"
+          onClick={() => handleToolSelect('browser')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'browser' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Message Queue"
+          onClick={() => handleToolSelect('queue')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'queue' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Cloud"
+          onClick={() => handleToolSelect('cloud')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'cloud' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Cloud className="w-4 h-4" />
         </button>
 
         {selectedCount > 0 && (

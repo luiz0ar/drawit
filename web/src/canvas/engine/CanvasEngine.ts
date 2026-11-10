@@ -9,6 +9,8 @@ import {
 } from './coordinates';
 import { hitTestElement } from './hitTest';
 import { CanvasRenderer } from './renderer';
+import { findClosestAnchor, computeAnchorWorldPosition, AnchorPosition } from './anchors';
+import { IT_COMPONENTS } from './components';
 
 export type Tool =
   | 'select'
@@ -17,7 +19,14 @@ export type Tool =
   | 'ellipse'
   | 'diamond'
   | 'triangle'
-  | 'line';
+  | 'line'
+  | 'arrow'
+  | 'text'
+  | 'database'
+  | 'server'
+  | 'browser'
+  | 'queue'
+  | 'cloud';
 
 export interface CanvasEngineCallbacks {
   onSelectionChange?: (selectedIds: string[]) => void;
@@ -42,6 +51,8 @@ export class CanvasEngine {
   private isDraggingElement = false;
   private isCreatingElement = false;
   private isSpacePressed = false;
+
+  private hoveredAnchor: { elementId: string; anchor: AnchorPosition; point: WorldPoint } | null = null;
 
   private lastScreenPoint: ScreenPoint = { x: 0, y: 0 };
   private startWorldPoint: WorldPoint = { x: 0, y: 0 };
@@ -103,9 +114,41 @@ export class CanvasEngine {
     return this.elements.filter((el) => this.selectedIds.has(el.id));
   }
 
+  /**
+   * Clean Detachment: When elements are deleted, arrows connected to them are detached
+   * and frozen at their world anchor point rather than deleted.
+   */
   public deleteSelected() {
     if (this.selectedIds.size === 0) return;
-    this.elements = this.elements.filter((el) => !this.selectedIds.has(el.id));
+
+    const deletedIds = this.selectedIds;
+    const deletedMap = new Map<string, CanvasElement>();
+    for (const el of this.elements) {
+      if (deletedIds.has(el.id)) {
+        deletedMap.set(el.id, el);
+      }
+    }
+
+    // Update arrows that had bindings to deleted elements
+    for (const el of this.elements) {
+      if (el.type === 'arrow') {
+        const arrow = el as any;
+        if (arrow.startBinding && deletedMap.has(arrow.startBinding.elementId)) {
+          const shape = deletedMap.get(arrow.startBinding.elementId)!;
+          const pos = computeAnchorWorldPosition(shape, arrow.startBinding.anchor);
+          arrow.points[0] = { x: pos.x, y: pos.y };
+          arrow.startBinding = undefined;
+        }
+        if (arrow.endBinding && deletedMap.has(arrow.endBinding.elementId)) {
+          const shape = deletedMap.get(arrow.endBinding.elementId)!;
+          const pos = computeAnchorWorldPosition(shape, arrow.endBinding.anchor);
+          arrow.points[arrow.points.length - 1] = { x: pos.x, y: pos.y };
+          arrow.endBinding = undefined;
+        }
+      }
+    }
+
+    this.elements = this.elements.filter((el) => !deletedIds.has(el.id));
     this.selectedIds.clear();
     this.isDirty = true;
     this.callbacks.onSelectionChange?.([]);
@@ -134,7 +177,6 @@ export class CanvasEngine {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
 
-    // Handle high DPI display
     const dpr = window.devicePixelRatio || 1;
     if (
       this.canvas.width !== width * dpr ||
@@ -145,16 +187,24 @@ export class CanvasEngine {
       this.ctx.scale(dpr, dpr);
     }
 
-    // 1. Clear & Background Grid
+    // 1. Background Grid
     this.renderer.clearAndRenderGrid(this.viewport, width, height, this.theme);
 
-    // 2. Render Elements
+    // 2. Elements
     this.renderer.applyViewport(this.viewport);
     for (const el of this.elements) {
       this.renderer.renderElement(el);
     }
 
-    // 3. Render Selection Bounding Box
+    // 3. Magnetic Anchors on hovered target
+    if (this.hoveredAnchor) {
+      const targetEl = this.elements.find((el) => el.id === this.hoveredAnchor?.elementId);
+      if (targetEl) {
+        this.renderer.renderMagneticAnchors(targetEl, this.hoveredAnchor.anchor);
+      }
+    }
+
+    // 4. Bounding Box for Selection
     for (const el of this.elements) {
       if (this.selectedIds.has(el.id)) {
         this.renderer.renderSelectionBox(el, this.viewport);
@@ -170,8 +220,6 @@ export class CanvasEngine {
 
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
-
-    // Prevent Windows middle-click autoscroll
     this.canvas.addEventListener('auxclick', this.onAuxClick);
   }
 
@@ -199,7 +247,6 @@ export class CanvasEngine {
       y: e.clientY - rect.top,
     };
 
-    // Zoom via mouse wheel without Ctrl
     const normalizedDelta = normalizeWheelDelta(e);
     const zoomFactor = Math.pow(0.999, normalizedDelta);
     const targetZoom = this.viewport.zoom * zoomFactor;
@@ -221,16 +268,15 @@ export class CanvasEngine {
     this.lastScreenPoint = screenPoint;
     this.startWorldPoint = screenToWorld(screenPoint, this.viewport);
 
-    // Check if middle click or Hand tool or Spacebar is active -> Pan
+    // Pan with middle click, hand tool or space
     if (e.button === 1 || this.activeTool === 'hand' || this.isSpacePressed) {
       this.isPanning = true;
       return;
     }
 
-    if (e.button !== 0) return; // Left click only for drawing/selecting
+    if (e.button !== 0) return;
 
     if (this.activeTool === 'select') {
-      // Find element under cursor (top-most in reverse order)
       let hit: CanvasElement | null = null;
       for (let i = this.elements.length - 1; i >= 0; i--) {
         if (hitTestElement(this.startWorldPoint, this.elements[i])) {
@@ -256,7 +302,95 @@ export class CanvasEngine {
       return;
     }
 
-    // Creating new geometric shape
+    // Creating arrow connector
+    if (this.activeTool === 'arrow') {
+      this.isCreatingElement = true;
+      const strokeColor = this.theme === 'dark' ? '#93c5fd' : '#2563eb';
+
+      // Check if starting snapped to an anchor
+      const startAnchor = findClosestAnchor(this.startWorldPoint, this.elements);
+      const startPt = startAnchor ? startAnchor.point : this.startWorldPoint;
+
+      this.activeElement = {
+        id: `arrow-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'arrow',
+        x: startPt.x,
+        y: startPt.y,
+        width: 0,
+        height: 0,
+        rotation: 0,
+        zIndex: this.elements.length + 1,
+        groupIds: [],
+        locked: false,
+        style: {
+          strokeColor,
+          fillColor: 'transparent',
+          strokeWidth: 2,
+          strokeStyle: 'solid',
+          opacity: 100,
+          effect: { type: 'none', intensity: 0 },
+        },
+        version: 1,
+        points: [{ x: startPt.x, y: startPt.y }, { x: startPt.x, y: startPt.y }],
+        startBinding: startAnchor
+          ? { elementId: startAnchor.elementId, anchor: startAnchor.anchor }
+          : undefined,
+        routing: 'straight',
+      } as any;
+
+      this.elements.push(this.activeElement!);
+      this.selectedIds.clear();
+      this.selectedIds.add(this.activeElement!.id);
+      this.isDirty = true;
+      return;
+    }
+
+    // Creating native IT Component
+    if (
+      this.activeTool === 'database' ||
+      this.activeTool === 'server' ||
+      this.activeTool === 'browser' ||
+      this.activeTool === 'queue' ||
+      this.activeTool === 'cloud'
+    ) {
+      const compDef = IT_COMPONENTS[this.activeTool];
+      const strokeColor = this.theme === 'dark' ? '#e2e8f0' : '#1e293b';
+
+      const newComp: CanvasElement = {
+        id: `comp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'component',
+        componentKey: this.activeTool,
+        label: compDef.name,
+        x: this.startWorldPoint.x - compDef.defaultWidth / 2,
+        y: this.startWorldPoint.y - compDef.defaultHeight / 2,
+        width: compDef.defaultWidth,
+        height: compDef.defaultHeight,
+        rotation: 0,
+        zIndex: this.elements.length + 1,
+        groupIds: [],
+        locked: false,
+        style: {
+          strokeColor,
+          fillColor: this.theme === 'dark' ? '#0f172a' : '#ffffff',
+          strokeWidth: 2,
+          strokeStyle: 'solid',
+          opacity: 100,
+          effect: { type: 'none', intensity: 0 },
+        },
+        version: 1,
+      } as any;
+
+      this.elements.push(newComp);
+      this.selectedIds.clear();
+      this.selectedIds.add(newComp.id);
+      this.activeTool = 'select';
+      this.isDirty = true;
+      this.callbacks.onElementsChange?.(this.elements);
+      this.callbacks.onSelectionChange?.(Array.from(this.selectedIds));
+      return;
+    }
+
+    // Creating standard geometric shape
     if (
       this.activeTool === 'rectangle' ||
       this.activeTool === 'ellipse' ||
@@ -266,7 +400,6 @@ export class CanvasEngine {
     ) {
       this.isCreatingElement = true;
       const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
-      const fillColor = 'transparent';
 
       this.activeElement = {
         id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -281,7 +414,7 @@ export class CanvasEngine {
         locked: false,
         style: {
           strokeColor,
-          fillColor,
+          fillColor: 'transparent',
           strokeWidth: 2,
           strokeStyle: 'solid',
           opacity: 100,
@@ -298,8 +431,6 @@ export class CanvasEngine {
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    if (!this.isPointerDown) return;
-
     const rect = this.canvas.getBoundingClientRect();
     const screenPoint: ScreenPoint = {
       x: e.clientX - rect.left,
@@ -310,7 +441,21 @@ export class CanvasEngine {
     const deltaScreenY = screenPoint.y - this.lastScreenPoint.y;
     this.lastScreenPoint = screenPoint;
 
-    // Pan mode
+    const currentWorld = screenToWorld(screenPoint, this.viewport);
+
+    // Update magnetic anchor highlight while creating arrows
+    if (this.activeTool === 'arrow') {
+      const snap = findClosestAnchor(currentWorld, this.elements, this.activeElement?.id);
+      if (snap) {
+        this.hoveredAnchor = snap;
+      } else {
+        this.hoveredAnchor = null;
+      }
+      this.isDirty = true;
+    }
+
+    if (!this.isPointerDown) return;
+
     if (this.isPanning) {
       this.viewport.panX += deltaScreenX;
       this.viewport.panY += deltaScreenY;
@@ -319,9 +464,27 @@ export class CanvasEngine {
       return;
     }
 
-    const currentWorld = screenToWorld(screenPoint, this.viewport);
+    // Creating arrow
+    if (this.isCreatingElement && this.activeElement && this.activeElement.type === 'arrow') {
+      const arrow = this.activeElement as any;
+      let targetPt = currentWorld;
 
-    // Creating element mode
+      if (this.hoveredAnchor) {
+        targetPt = this.hoveredAnchor.point;
+        arrow.endBinding = {
+          elementId: this.hoveredAnchor.elementId,
+          anchor: this.hoveredAnchor.anchor,
+        };
+      } else {
+        arrow.endBinding = undefined;
+      }
+
+      arrow.points[arrow.points.length - 1] = { x: targetPt.x, y: targetPt.y };
+      this.isDirty = true;
+      return;
+    }
+
+    // Creating geometric shape
     if (this.isCreatingElement && this.activeElement) {
       this.activeElement.width = currentWorld.x - this.startWorldPoint.x;
       this.activeElement.height = currentWorld.y - this.startWorldPoint.y;
@@ -329,7 +492,7 @@ export class CanvasEngine {
       return;
     }
 
-    // Dragging selected elements mode
+    // Dragging selected elements & dynamically recalculating arrow bindings
     if (this.isDraggingElement) {
       const deltaWorldX = deltaScreenX / this.viewport.zoom;
       const deltaWorldY = deltaScreenY / this.viewport.zoom;
@@ -340,10 +503,40 @@ export class CanvasEngine {
           el.y += deltaWorldY;
         }
       }
+
+      // Re-anchor any attached arrows
+      this.recalculateArrowBindings();
+
       this.isDirty = true;
       return;
     }
   };
+
+  /**
+   * Recalculates end/start positions of arrows connected to moved elements.
+   */
+  private recalculateArrowBindings() {
+    const elementMap = new Map<string, CanvasElement>();
+    for (const el of this.elements) {
+      elementMap.set(el.id, el);
+    }
+
+    for (const el of this.elements) {
+      if (el.type === 'arrow') {
+        const arrow = el as any;
+        if (arrow.startBinding && elementMap.has(arrow.startBinding.elementId)) {
+          const shape = elementMap.get(arrow.startBinding.elementId)!;
+          const pos = computeAnchorWorldPosition(shape, arrow.startBinding.anchor);
+          arrow.points[0] = { x: pos.x, y: pos.y };
+        }
+        if (arrow.endBinding && elementMap.has(arrow.endBinding.elementId)) {
+          const shape = elementMap.get(arrow.endBinding.elementId)!;
+          const pos = computeAnchorWorldPosition(shape, arrow.endBinding.anchor);
+          arrow.points[arrow.points.length - 1] = { x: pos.x, y: pos.y };
+        }
+      }
+    }
+  }
 
   private onPointerUp = (e: PointerEvent) => {
     if (!this.isPointerDown) return;
@@ -353,37 +546,37 @@ export class CanvasEngine {
         this.canvas.releasePointerCapture(e.pointerId);
       }
     } catch {
-      // Ignore lost capture
+      // Ignored
     }
 
     this.isPointerDown = false;
     this.isPanning = false;
+    this.hoveredAnchor = null;
 
     if (this.isCreatingElement) {
       this.isCreatingElement = false;
 
-      // Normalize negative width/height
       if (this.activeElement) {
-        if (this.activeElement.width < 0) {
-          this.activeElement.x += this.activeElement.width;
-          this.activeElement.width = Math.abs(this.activeElement.width);
-        }
-        if (this.activeElement.height < 0) {
-          this.activeElement.y += this.activeElement.height;
-          this.activeElement.height = Math.abs(this.activeElement.height);
-        }
+        if (this.activeElement.type !== 'arrow') {
+          if (this.activeElement.width < 0) {
+            this.activeElement.x += this.activeElement.width;
+            this.activeElement.width = Math.abs(this.activeElement.width);
+          }
+          if (this.activeElement.height < 0) {
+            this.activeElement.y += this.activeElement.height;
+            this.activeElement.height = Math.abs(this.activeElement.height);
+          }
 
-        // Avoid accidental single-pixel clicks
-        if (this.activeElement.width < 5 && this.activeElement.height < 5) {
-          this.activeElement.width = 100;
-          this.activeElement.height = 60;
+          if (this.activeElement.width < 5 && this.activeElement.height < 5) {
+            this.activeElement.width = 100;
+            this.activeElement.height = 60;
+          }
         }
 
         this.callbacks.onElementsChange?.(this.elements);
         this.activeElement = null;
       }
 
-      // Switch back to select tool after creating element
       this.activeTool = 'select';
     }
 
@@ -394,7 +587,6 @@ export class CanvasEngine {
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
-    // Avoid triggering canvas hotkeys when typing in form inputs
     const target = e.target as HTMLElement | null;
     if (
       target &&
@@ -413,12 +605,12 @@ export class CanvasEngine {
       this.deleteSelected();
     }
 
-    // Keyboard Shortcuts
     if (e.key === 'v' || e.key === 'V') this.activeTool = 'select';
     if (e.key === 'h' || e.key === 'H') this.activeTool = 'hand';
     if (e.key === 'r' || e.key === 'R') this.activeTool = 'rectangle';
     if (e.key === 'o' || e.key === 'O') this.activeTool = 'ellipse';
     if (e.key === 'd' || e.key === 'D') this.activeTool = 'diamond';
+    if (e.key === 'a' || e.key === 'A') this.activeTool = 'arrow';
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -427,4 +619,3 @@ export class CanvasEngine {
     }
   };
 }
-

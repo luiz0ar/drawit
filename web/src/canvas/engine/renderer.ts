@@ -1,5 +1,7 @@
 import { CanvasElement } from './types';
 import { ViewportTransform, worldToScreen } from './coordinates';
+import { IT_COMPONENTS } from './components';
+import { getElementAnchors } from './anchors';
 
 /**
  * High-performance imperative 2D renderer.
@@ -25,11 +27,10 @@ export class CanvasRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    // Grid dots/lines
+    // Grid dots
     const GRID_SIZE = 20;
     const scaledGrid = GRID_SIZE * viewport.zoom;
 
-    // Only render grid if zoom is legible
     if (scaledGrid > 8) {
       const offsetX = (viewport.panX % scaledGrid + scaledGrid) % scaledGrid;
       const offsetY = (viewport.panY % scaledGrid + scaledGrid) % scaledGrid;
@@ -62,13 +63,93 @@ export class CanvasRenderer {
   }
 
   /**
+   * Renders magnetic snap anchors on an active target element.
+   */
+  public renderMagneticAnchors(element: CanvasElement, activeAnchor?: string) {
+    const ctx = this.ctx;
+    const anchors = getElementAnchors(element);
+
+    for (const a of anchors) {
+      ctx.save();
+      const isHovered = activeAnchor === a.position;
+      ctx.fillStyle = isHovered ? '#2563eb' : '#3b82f6';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.arc(a.point.x, a.point.y, isHovered ? 6 : 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Renders an arrow connector with arrowhead.
+   */
+  public renderArrow(element: CanvasElement) {
+    const ctx = this.ctx;
+    const arrow = element as any;
+    const pts = arrow.points || [];
+    if (pts.length < 2) return;
+
+    ctx.save();
+    ctx.strokeStyle = element.style.strokeColor;
+    ctx.lineWidth = element.style.strokeWidth;
+    ctx.globalAlpha = element.style.opacity / 100;
+
+    if (element.style.strokeStyle === 'dashed') {
+      ctx.setLineDash([8, 6]);
+    } else if (element.style.strokeStyle === 'dotted') {
+      ctx.setLineDash([2, 4]);
+    } else {
+      ctx.setLineDash([]);
+    }
+
+    // Path
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.stroke();
+
+    // Arrowhead at end
+    const last = pts[pts.length - 1];
+    const prev = pts[pts.length - 2];
+    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+    const HEAD_LEN = 12;
+
+    ctx.fillStyle = element.style.strokeColor;
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(
+      last.x - HEAD_LEN * Math.cos(angle - Math.PI / 6),
+      last.y - HEAD_LEN * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      last.x - HEAD_LEN * Math.cos(angle + Math.PI / 6),
+      last.y - HEAD_LEN * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
    * Renders a single element on the canvas.
    */
   public renderElement(element: CanvasElement) {
+    if (element.type === 'arrow') {
+      this.renderArrow(element);
+      return;
+    }
+
     const ctx = this.ctx;
     ctx.save();
 
-    // Center of element for rotation
+    // Rotation around element center
     const cx = element.x + element.width / 2;
     const cy = element.y + element.height / 2;
 
@@ -78,7 +159,7 @@ export class CanvasRenderer {
     }
     ctx.translate(-cx, -cy);
 
-    // Apply styles
+    // Styling
     ctx.strokeStyle = element.style.strokeColor;
     ctx.lineWidth = element.style.strokeWidth;
     ctx.globalAlpha = element.style.opacity / 100;
@@ -95,7 +176,6 @@ export class CanvasRenderer {
 
     switch (element.type) {
       case 'rectangle':
-      case 'component':
         ctx.beginPath();
         ctx.rect(element.x, element.y, element.width, element.height);
         if (element.style.fillColor !== 'transparent') ctx.fill();
@@ -139,9 +219,30 @@ export class CanvasRenderer {
         ctx.stroke();
         break;
 
+      case 'component':
+        const comp = IT_COMPONENTS[(element as any).componentKey];
+        if (comp) {
+          comp.draw(ctx, element.x, element.y, element.width, element.height);
+        } else {
+          ctx.strokeRect(element.x, element.y, element.width, element.height);
+        }
+
+        // Render component label under icon
+        if ((element as any).label) {
+          ctx.fillStyle = element.style.strokeColor;
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(
+            (element as any).label,
+            element.x + element.width / 2,
+            element.y + element.height + 16
+          );
+        }
+        break;
+
       case 'text':
         ctx.fillStyle = element.style.strokeColor;
-        ctx.font = `${element.fontSize}px sans-serif`;
+        ctx.font = `${(element as any).fontSize || 16}px sans-serif`;
         ctx.textBaseline = 'top';
         ctx.fillText((element as any).text || '', element.x, element.y);
         break;
@@ -157,9 +258,11 @@ export class CanvasRenderer {
     element: CanvasElement,
     viewport: ViewportTransform
   ) {
+    if (element.type === 'arrow') return;
+
     const ctx = this.ctx;
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Render handles in screen space for crispness
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     const p1 = worldToScreen({ x: element.x, y: element.y }, viewport);
     const p2 = worldToScreen(
@@ -173,7 +276,7 @@ export class CanvasRenderer {
     const height = Math.abs(p2.y - p1.y);
 
     // Selection border
-    ctx.strokeStyle = '#2563eb'; // blue-600
+    ctx.strokeStyle = '#2563eb';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(minX - 4, minY - 4, width + 8, height + 8);
@@ -200,4 +303,3 @@ export class CanvasRenderer {
     ctx.restore();
   }
 }
-
