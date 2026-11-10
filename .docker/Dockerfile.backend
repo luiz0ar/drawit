@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar cargo-watch para live-reload do backend em desenvolvimento
-RUN cargo install cargo-watch --locked
+# Instalar cargo-watch para live-reload do backend em desenvolvimento e componentes de formatação
+RUN rustup component add rustfmt clippy && cargo install cargo-watch --locked
 
 # Copiar arquivos de dependências
 COPY Cargo.toml Cargo.lock* ./

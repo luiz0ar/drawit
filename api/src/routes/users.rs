@@ -5,13 +5,7 @@ use axum::{
 };
 use mongodb::bson::doc;
 
-use crate::{
-    dto::UserDto,
-    error::AppError,
-    models::User,
-    services::Claims,
-    AppState,
-};
+use crate::{dto::UserDto, error::AppError, models::User, services::Claims, AppState};
 
 pub async fn me(
     Extension(claims): Extension<Claims>,

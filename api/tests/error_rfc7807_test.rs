@@ -42,12 +42,10 @@ fn test_problem_details_json_structure() {
 
 #[test]
 fn test_validation_error_with_invalid_params() {
-    let params = vec![
-        InvalidParam {
-            name: "username".to_string(),
-            reason: "Username deve ter no mínimo 3 caracteres".to_string(),
-        },
-    ];
+    let params = vec![InvalidParam {
+        name: "username".to_string(),
+        reason: "Username deve ter no mínimo 3 caracteres".to_string(),
+    }];
 
     let problem = ProblemDetails::new(
         422,
@@ -65,4 +63,3 @@ fn test_validation_error_with_invalid_params() {
     assert_eq!(json_val["code"], "VALIDATION_FAILED");
     assert_eq!(json_val["invalid_params"][0]["name"], "username");
 }
-

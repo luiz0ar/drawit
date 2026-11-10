@@ -1,8 +1,4 @@
-use mongodb::{
-    bson::doc,
-    options::IndexOptions,
-    Database, IndexModel,
-};
+use mongodb::{bson::doc, options::IndexOptions, Database, IndexModel};
 use tracing::info;
 
 pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
@@ -99,11 +95,7 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
     // 5. `board_scenes` collection: strict tenant isolation index (owner_id)
     let scenes_col = db.collection::<mongodb::bson::Document>("board_scenes");
     scenes_col
-        .create_index(
-            IndexModel::builder()
-                .keys(doc! { "owner_id": 1 })
-                .build(),
-        )
+        .create_index(IndexModel::builder().keys(doc! { "owner_id": 1 }).build())
         .await?;
 
     info!("All MongoDB indexes verified successfully.");

@@ -19,9 +19,7 @@ fn extract_refresh_token_from_cookies(headers: &HeaderMap) -> Option<String> {
         .ok()?
         .split(';')
         .find_map(|cookie| {
-            let mut parts = cookie.trim().splitn(2, '=');
-            let name = parts.next()?;
-            let value = parts.next()?;
+            let (name, value) = cookie.trim().split_once('=')?;
             if name == "refresh_token" {
                 Some(value.to_string())
             } else {
@@ -53,8 +51,10 @@ pub async fn register(
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
 
     let (response, raw_refresh_token) = auth_service.register(req, user_agent).await?;
-    let cookie_header =
-        build_refresh_cookie(&raw_refresh_token, state.config.refresh_token_expiration_days);
+    let cookie_header = build_refresh_cookie(
+        &raw_refresh_token,
+        state.config.refresh_token_expiration_days,
+    );
 
     Ok((
         StatusCode::CREATED,
@@ -74,8 +74,10 @@ pub async fn login(
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
 
     let (response, raw_refresh_token) = auth_service.login(req, user_agent).await?;
-    let cookie_header =
-        build_refresh_cookie(&raw_refresh_token, state.config.refresh_token_expiration_days);
+    let cookie_header = build_refresh_cookie(
+        &raw_refresh_token,
+        state.config.refresh_token_expiration_days,
+    );
 
     Ok((
         StatusCode::OK,

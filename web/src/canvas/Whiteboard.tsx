@@ -19,6 +19,12 @@ import {
   Trash2,
   Sun,
   Moon,
+  Search,
+  Download,
+  HelpCircle,
+  Copy,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import { CanvasEngine, Tool } from './engine/CanvasEngine';
 import { ViewportTransform, clampZoom } from './engine/coordinates';
@@ -28,10 +34,21 @@ import { useAutosave } from '../features/editor/useAutosave';
 import { BoardHeader } from '../features/boards/BoardHeader';
 import { BoardDrawer } from '../features/boards/BoardDrawer';
 import { ConflictDialog } from '../features/boards/ConflictDialog';
+import { CommandPalette } from '../features/palette/CommandPalette';
+import { ShortcutsModal } from '../features/palette/ShortcutsModal';
+import {
+  downloadPngFile,
+  downloadSvgFile,
+} from './export/imageExporter';
+import {
+  downloadJsonFile,
+  parseAndValidateDrawitJson,
+} from './export/jsonExporter';
 
 export const Whiteboard: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<CanvasEngine | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { resolvedTheme, setTheme } = useTheme();
 
@@ -44,14 +61,19 @@ export const Whiteboard: React.FC = () => {
   });
   const [selectedCount, setSelectedCount] = useState<number>(0);
 
+  // Modals & Panels State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
+
   // Boards & Groups State
   const [boards, setBoards] = useState<Board[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeBoard, setActiveBoard] = useState<Board | null>(null);
   const [isTrashView, setIsTrashView] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [serverRevision, setServerRevision] = useState<number>(1);
-  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
 
   // OCC Autosave Hook
   const {
@@ -78,7 +100,6 @@ export const Whiteboard: React.FC = () => {
       setGroups(fetchedGroups);
       return fetchedBoards;
     } catch {
-      // Offline or mock mode for standalone preview
       const fallback: Board = {
         id: 'local-board-1',
         owner_id: 'local',
@@ -116,7 +137,6 @@ export const Whiteboard: React.FC = () => {
         }
       }
     } catch {
-      // Fallback empty scene
       setServerRevision(1);
       if (engineRef.current) {
         engineRef.current.setElements([]);
@@ -132,6 +152,32 @@ export const Whiteboard: React.FC = () => {
       }
     });
   }, [refreshBoardList, loadBoardScene]);
+
+  // Global Keyboard Shortcuts (Ctrl+K for Command Palette, ? for Shortcuts)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      } else if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setIsShortcutsOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   // Canvas engine initialization
   useEffect(() => {
@@ -219,6 +265,83 @@ export const Whiteboard: React.FC = () => {
     if (engineRef.current) {
       engineRef.current.deleteSelected();
     }
+  };
+
+  // Layer Ordering & Grouping actions
+  const handleGroupSelected = () => {
+    engineRef.current?.groupSelected();
+  };
+
+  const handleUngroupSelected = () => {
+    engineRef.current?.ungroupSelected();
+  };
+
+  const handleBringToFront = () => {
+    engineRef.current?.bringToFront();
+  };
+
+  const handleSendToBack = () => {
+    engineRef.current?.sendToBack();
+  };
+
+  // Export & Import actions
+  const boardTitle = activeBoard?.title || 'Quadro-1';
+  const bgColor = resolvedTheme === 'dark' ? '#090d16' : '#ffffff';
+
+  const handleExportPng = async () => {
+    if (!engineRef.current) return;
+    setIsExportMenuOpen(false);
+    await downloadPngFile(boardTitle, engineRef.current.getElements(), {
+      scale: 2,
+      background: bgColor,
+    });
+  };
+
+  const handleExportSvg = () => {
+    if (!engineRef.current) return;
+    setIsExportMenuOpen(false);
+    downloadSvgFile(boardTitle, engineRef.current.getElements(), {
+      background: bgColor,
+    });
+  };
+
+  const handleExportJson = () => {
+    if (!engineRef.current) return;
+    setIsExportMenuOpen(false);
+    downloadJsonFile(
+      boardTitle,
+      boardTitle,
+      engineRef.current.getElements(),
+      engineRef.current.getViewport()
+    );
+  };
+
+  const handleImportJson = () => {
+    setIsExportMenuOpen(false);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const res = parseAndValidateDrawitJson(content);
+      if (res.valid && res.data && engineRef.current) {
+        engineRef.current.setElements(res.data.scene.elements);
+        if (res.data.scene.viewport) {
+          engineRef.current.setViewport(res.data.scene.viewport);
+          setViewport(res.data.scene.viewport);
+        }
+        scheduleSave(res.data.scene.elements, engineRef.current.getViewport());
+      } else {
+        alert(res.error || 'Failed to import .drawit file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   // Board management actions
@@ -315,10 +438,19 @@ export const Whiteboard: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background select-none">
+      {/* Hidden file input for .drawit JSON Import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".drawit,.json"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       {/* Top Left: Board Header with Inline Rename & Save Status */}
       <div className="absolute top-4 left-4 z-20">
         <BoardHeader
-          title={activeBoard?.title || 'Quadro-1'}
+          title={boardTitle}
           groupName={currentGroupName}
           saveStatus={saveStatus}
           isTrashView={isTrashView}
@@ -349,6 +481,29 @@ export const Whiteboard: React.FC = () => {
         onCreateGroup={handleCreateGroup}
         onDeleteGroup={handleDeleteGroup}
         onToggleTrashView={handleToggleTrashView}
+      />
+
+      {/* Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onSelectTool={handleToolSelect}
+        onResetZoom={handleResetZoom}
+        onExportPng={handleExportPng}
+        onExportSvg={handleExportSvg}
+        onExportJson={handleExportJson}
+        onImportJson={handleImportJson}
+        onGroupSelected={handleGroupSelected}
+        onUngroupSelected={handleUngroupSelected}
+        onBringToFront={handleBringToFront}
+        onSendToBack={handleSendToBack}
+        onOpenShortcuts={() => setIsShortcutsOpen(true)}
+      />
+
+      {/* Keyboard Shortcuts Modal (?) */}
+      <ShortcutsModal
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
       />
 
       {/* OCC Concurrency Conflict Dialog */}
@@ -503,6 +658,30 @@ export const Whiteboard: React.FC = () => {
           <>
             <div className="w-[1px] h-5 bg-border mx-1" />
             <button
+              title="Group Selected (Ctrl+G)"
+              onClick={handleGroupSelected}
+              className="p-2 rounded hover:bg-muted text-foreground transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+
+            <button
+              title="Bring to Front (Ctrl+])"
+              onClick={handleBringToFront}
+              className="p-2 rounded hover:bg-muted text-foreground transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <button
+              title="Send to Back (Ctrl+[)"
+              onClick={handleSendToBack}
+              className="p-2 rounded hover:bg-muted text-foreground transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <button
               title="Delete Selected (Del)"
               onClick={handleDelete}
               className="p-2 rounded text-destructive hover:bg-destructive/10 transition-colors"
@@ -550,12 +729,79 @@ export const Whiteboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Top Right Controls: Theme Toggle */}
+      {/* Top Right Controls: Command Palette, Export, Help & Theme */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        {/* Command Palette Trigger */}
+        <button
+          title="Command Palette (Ctrl+K)"
+          onClick={() => setIsCommandPaletteOpen(true)}
+          className="flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground text-xs font-medium transition-colors"
+        >
+          <Search className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="hidden sm:inline">Search...</span>
+          <kbd className="text-[10px] font-mono px-1 py-0.2 rounded bg-muted text-muted-foreground border ml-1">
+            Ctrl+K
+          </kbd>
+        </button>
+
+        {/* Export Dropdown Trigger */}
+        <div className="relative">
+          <button
+            title="Export & Portability"
+            onClick={() => setIsExportMenuOpen((prev) => !prev)}
+            className="flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground text-xs font-semibold transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+
+          {isExportMenuOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-xl border bg-card/95 backdrop-blur shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 duration-100">
+              <button
+                onClick={handleExportPng}
+                className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors flex items-center justify-between"
+              >
+                <span>Export as PNG (2x)</span>
+                <span className="text-[10px] text-muted-foreground font-mono">HiDPI</span>
+              </button>
+              <button
+                onClick={handleExportSvg}
+                className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors flex items-center justify-between"
+              >
+                <span>Export as SVG</span>
+                <span className="text-[10px] text-muted-foreground font-mono">Vector</span>
+              </button>
+              <div className="h-[1px] bg-border my-1" />
+              <button
+                onClick={handleExportJson}
+                className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors flex items-center justify-between"
+              >
+                <span>Save as .drawit JSON</span>
+              </button>
+              <button
+                onClick={handleImportJson}
+                className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors flex items-center justify-between"
+              >
+                <span>Import .drawit file...</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Shortcuts Cheat Sheet Trigger */}
+        <button
+          title="Keyboard Shortcuts (?)"
+          onClick={() => setIsShortcutsOpen(true)}
+          className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors"
+        >
+          <HelpCircle className="w-4 h-4" />
+        </button>
+
+        {/* Theme Toggle */}
         <button
           title="Toggle Theme"
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-          className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-md hover:bg-muted text-foreground transition-colors"
+          className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors"
         >
           {resolvedTheme === 'dark' ? (
             <Sun className="w-4 h-4" />

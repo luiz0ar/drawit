@@ -1,15 +1,6 @@
-use axum::{
-    extract::State,
-    http::header,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::State, http::header, middleware::Next, response::Response};
 
-use crate::{
-    error::AppError,
-    services::TokenService,
-    AppState,
-};
+use crate::{error::AppError, services::TokenService, AppState};
 
 pub async fn require_auth(
     State(state): State<AppState>,

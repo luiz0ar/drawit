@@ -53,6 +53,7 @@ export class CanvasEngine {
   private isSpacePressed = false;
 
   private hoveredAnchor: { elementId: string; anchor: AnchorPosition; point: WorldPoint } | null = null;
+  private alignmentGuides: Array<{ orientation: 'horizontal' | 'vertical'; pos: number }> = [];
 
   private lastScreenPoint: ScreenPoint = { x: 0, y: 0 };
   private startWorldPoint: WorldPoint = { x: 0, y: 0 };
@@ -155,6 +156,106 @@ export class CanvasEngine {
     this.callbacks.onElementsChange?.(this.elements);
   }
 
+  /**
+   * RF-E11: Logical grouping of selected elements
+   */
+  public groupSelected() {
+    if (this.selectedIds.size < 2) return;
+    const newGroupId = `grp_${Math.random().toString(36).substring(2, 9)}`;
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id)) {
+        if (!el.groupIds) el.groupIds = [];
+        el.groupIds.push(newGroupId);
+      }
+    }
+    this.isDirty = true;
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * RF-E11: Ungroup selected elements
+   */
+  public ungroupSelected() {
+    if (this.selectedIds.size === 0) return;
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id) && el.groupIds && el.groupIds.length > 0) {
+        el.groupIds.pop();
+      }
+    }
+    this.isDirty = true;
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * RF-E12: Bring selected elements to top of z-order
+   */
+  public bringToFront() {
+    if (this.selectedIds.size === 0) return;
+    const selected: CanvasElement[] = [];
+    const unselected: CanvasElement[] = [];
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id)) {
+        selected.push(el);
+      } else {
+        unselected.push(el);
+      }
+    }
+    this.elements = [...unselected, ...selected];
+    this.isDirty = true;
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * RF-E12: Send selected elements to bottom of z-order
+   */
+  public sendToBack() {
+    if (this.selectedIds.size === 0) return;
+    const selected: CanvasElement[] = [];
+    const unselected: CanvasElement[] = [];
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id)) {
+        selected.push(el);
+      } else {
+        unselected.push(el);
+      }
+    }
+    this.elements = [...selected, ...unselected];
+    this.isDirty = true;
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * Move selected elements up one level in z-order
+   */
+  public bringForward() {
+    if (this.selectedIds.size === 0) return;
+    for (let i = this.elements.length - 2; i >= 0; i--) {
+      if (this.selectedIds.has(this.elements[i].id) && !this.selectedIds.has(this.elements[i + 1].id)) {
+        const temp = this.elements[i];
+        this.elements[i] = this.elements[i + 1];
+        this.elements[i + 1] = temp;
+      }
+    }
+    this.isDirty = true;
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * Move selected elements down one level in z-order
+   */
+  public sendBackward() {
+    if (this.selectedIds.size === 0) return;
+    for (let i = 1; i < this.elements.length; i++) {
+      if (this.selectedIds.has(this.elements[i].id) && !this.selectedIds.has(this.elements[i - 1].id)) {
+        const temp = this.elements[i];
+        this.elements[i] = this.elements[i - 1];
+        this.elements[i - 1] = temp;
+      }
+    }
+    this.isDirty = true;
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
   public destroy() {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
@@ -210,6 +311,14 @@ export class CanvasEngine {
         this.renderer.renderSelectionBox(el, this.viewport);
       }
     }
+
+    // 5. Dynamic Smart Alignment Guides
+    this.renderer.renderAlignmentGuides(
+      this.alignmentGuides,
+      this.viewport,
+      width,
+      height
+    );
   }
 
   private setupEventListeners() {
@@ -504,6 +613,42 @@ export class CanvasEngine {
         }
       }
 
+      // Smart alignment snapping (RF-C05, RF-E02)
+      this.alignmentGuides = [];
+      const SNAP_THRESHOLD = 6 / this.viewport.zoom;
+      const draggedEl = this.elements.find(
+        (el) => this.selectedIds.has(el.id) && el.type !== 'arrow'
+      );
+
+      if (draggedEl) {
+        const draggedCenterX = draggedEl.x + draggedEl.width / 2;
+        const draggedCenterY = draggedEl.y + draggedEl.height / 2;
+
+        for (const other of this.elements) {
+          if (this.selectedIds.has(other.id) || other.type === 'arrow') continue;
+          const otherCenterX = other.x + other.width / 2;
+          const otherCenterY = other.y + other.height / 2;
+
+          // Center Y alignment
+          if (Math.abs(draggedCenterY - otherCenterY) < SNAP_THRESHOLD) {
+            const snapDeltaY = otherCenterY - draggedCenterY;
+            for (const el of this.elements) {
+              if (this.selectedIds.has(el.id)) el.y += snapDeltaY;
+            }
+            this.alignmentGuides.push({ orientation: 'horizontal', pos: otherCenterY });
+          }
+
+          // Center X alignment
+          if (Math.abs(draggedCenterX - otherCenterX) < SNAP_THRESHOLD) {
+            const snapDeltaX = otherCenterX - draggedCenterX;
+            for (const el of this.elements) {
+              if (this.selectedIds.has(el.id)) el.x += snapDeltaX;
+            }
+            this.alignmentGuides.push({ orientation: 'vertical', pos: otherCenterX });
+          }
+        }
+      }
+
       // Re-anchor any attached arrows
       this.recalculateArrowBindings();
 
@@ -552,6 +697,7 @@ export class CanvasEngine {
     this.isPointerDown = false;
     this.isPanning = false;
     this.hoveredAnchor = null;
+    this.alignmentGuides = [];
 
     if (this.isCreatingElement) {
       this.isCreatingElement = false;
@@ -603,6 +749,30 @@ export class CanvasEngine {
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
       this.deleteSelected();
+    }
+
+    // Layer ordering and grouping shortcuts
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'g' && !e.shiftKey) {
+        e.preventDefault();
+        this.groupSelected();
+        return;
+      }
+      if ((e.key === 'g' || e.key === 'G') && e.shiftKey) {
+        e.preventDefault();
+        this.ungroupSelected();
+        return;
+      }
+      if (e.key === ']') {
+        e.preventDefault();
+        this.bringToFront();
+        return;
+      }
+      if (e.key === '[') {
+        e.preventDefault();
+        this.sendToBack();
+        return;
+      }
     }
 
     if (e.key === 'v' || e.key === 'V') this.activeTool = 'select';

@@ -26,11 +26,7 @@ impl TokenService {
     }
 
     /// Generates signed JWT Access Token with HS256
-    pub fn create_access_token(
-        &self,
-        user_id: &str,
-        username: &str,
-    ) -> Result<String, AppError> {
+    pub fn create_access_token(&self, user_id: &str, username: &str) -> Result<String, AppError> {
         let now = Utc::now();
         let exp = now + Duration::minutes(self.access_token_exp_minutes);
 

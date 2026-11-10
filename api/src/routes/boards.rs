@@ -108,15 +108,7 @@ pub async fn save_scene(
 ) -> Result<impl IntoResponse, AppError> {
     let board_service = BoardService::new(&state.db);
     let new_revision = board_service
-        .save_scene(
-            &claims.sub,
-            &board_id,
-            req.revision,
-            req.elements,
-            req.viewport,
-            req.content_hash,
-            req.last_client_save_id,
-        )
+        .save_scene(&claims.sub, &board_id, req)
         .await?;
 
     Ok(Json(serde_json::json!({
@@ -124,4 +116,3 @@ pub async fn save_scene(
         "revision": new_revision
     })))
 }
-

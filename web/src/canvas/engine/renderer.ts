@@ -302,4 +302,37 @@ export class CanvasRenderer {
 
     ctx.restore();
   }
+
+  /**
+   * Renders dynamic smart alignment guides in screen space.
+   */
+  public renderAlignmentGuides(
+    guides: Array<{ orientation: 'horizontal' | 'vertical'; pos: number }>,
+    viewport: ViewportTransform,
+    width: number,
+    height: number
+  ) {
+    if (guides.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+
+    for (const g of guides) {
+      ctx.beginPath();
+      if (g.orientation === 'vertical') {
+        const screenX = g.pos * viewport.zoom + viewport.panX;
+        ctx.moveTo(screenX, 0);
+        ctx.lineTo(screenX, height);
+      } else {
+        const screenY = g.pos * viewport.zoom + viewport.panY;
+        ctx.moveTo(0, screenY);
+        ctx.lineTo(width, screenY);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }

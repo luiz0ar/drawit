@@ -61,12 +61,13 @@ impl AuthService {
         }
 
         // Check if username already exists
-        if let Some(_) = self
+        let exists = self
             .users_col
             .find_one(doc! { "username": &username })
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?
-        {
+            .is_some();
+        if exists {
             return Err(AppError::Validation(vec![InvalidParam {
                 name: "username".to_string(),
                 reason: "This username is already taken.".to_string(),
@@ -105,7 +106,9 @@ impl AuthService {
         let is_valid =
             PasswordService::verify_password(password, user.password_hash.clone()).await?;
         if !is_valid {
-            return Err(AppError::Unauthorized("Invalid username or password.".to_string()));
+            return Err(AppError::Unauthorized(
+                "Invalid username or password.".to_string(),
+            ));
         }
 
         self.create_session(&user, user_agent).await
@@ -130,7 +133,9 @@ impl AuthService {
 
         // Expiration check
         if token_doc.expires_at < now {
-            return Err(AppError::Unauthorized("Session expired. Please sign in again.".to_string()));
+            return Err(AppError::Unauthorized(
+                "Session expired. Please sign in again.".to_string(),
+            ));
         }
 
         // Revocation / Reuse detection
@@ -148,7 +153,8 @@ impl AuthService {
                     .map_err(|e| AppError::Internal(e.to_string()))?;
 
                 return Err(AppError::Unauthorized(
-                    "Security violation detected. All active sessions have been revoked.".to_string(),
+                    "Security violation detected. All active sessions have been revoked."
+                        .to_string(),
                 ));
             }
         }

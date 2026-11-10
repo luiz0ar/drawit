@@ -5,7 +5,9 @@ use mongodb::{
 };
 
 use crate::{
-    dto::{BoardDto, CreateBoardRequest, SceneDto, UpdateBoardRequest, ViewportDto},
+    dto::{
+        BoardDto, CreateBoardRequest, SaveSceneRequest, SceneDto, UpdateBoardRequest, ViewportDto,
+    },
     error::{AppError, InvalidParam},
     models::{Board, BoardScene, Viewport},
 };
@@ -66,7 +68,8 @@ impl BoardService {
             schema_version: 1,
             revision: 1,
             last_client_save_id: None,
-            content_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            content_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                .to_string(),
             elements: vec![],
             viewport: Viewport::default(),
             updated_at: now,
@@ -100,7 +103,11 @@ impl BoardService {
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let mut boards = Vec::new();
-        while cursor.advance().await.map_err(|e| AppError::Internal(e.to_string()))? {
+        while cursor
+            .advance()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+        {
             let board = cursor
                 .deserialize_current()
                 .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -138,35 +145,32 @@ impl BoardService {
         &self,
         owner_id: &str,
         board_id: &str,
-        expected_revision: u64,
-        elements: Vec<serde_json::Value>,
-        viewport: ViewportDto,
-        content_hash: String,
-        last_client_save_id: Option<String>,
+        req: SaveSceneRequest,
     ) -> Result<u64, AppError> {
         let now = Utc::now();
-        let next_revision = expected_revision + 1;
+        let next_revision = req.revision + 1;
 
         let filter = doc! {
             "_id": board_id,
             "owner_id": owner_id,
-            "revision": expected_revision as i64,
+            "revision": req.revision as i64,
         };
 
-        let elements_bson = to_bson(&elements)
-            .map_err(|e| AppError::Internal(format!("Failed to serialize scene elements: {}", e)))?;
+        let elements_bson = to_bson(&req.elements).map_err(|e| {
+            AppError::Internal(format!("Failed to serialize scene elements: {}", e))
+        })?;
 
         let update = doc! {
             "$set": {
                 "revision": next_revision as i64,
                 "elements": elements_bson,
                 "viewport": {
-                    "x": viewport.pan_x,
-                    "y": viewport.pan_y,
-                    "zoom": viewport.zoom,
+                    "x": req.viewport.pan_x,
+                    "y": req.viewport.pan_y,
+                    "zoom": req.viewport.zoom,
                 },
-                "content_hash": &content_hash,
-                "last_client_save_id": last_client_save_id,
+                "content_hash": &req.content_hash,
+                "last_client_save_id": req.last_client_save_id,
                 "updated_at": BsonDateTime::from_millis(now.timestamp_millis()),
             }
         };

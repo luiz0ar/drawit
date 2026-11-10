@@ -16,7 +16,7 @@ pub struct User {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPreferences {
-    pub theme: String, // "light" | "dark" | "system"
+    pub theme: String,    // "light" | "dark" | "system"
     pub language: String, // "pt-BR"
 }
 
@@ -42,4 +42,3 @@ impl User {
         }
     }
 }
-

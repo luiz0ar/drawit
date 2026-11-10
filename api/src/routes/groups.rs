@@ -63,4 +63,3 @@ pub async fn delete_group(
     service.delete_group(&claims.sub, &group_id, action).await?;
     Ok(StatusCode::NO_CONTENT)
 }
-

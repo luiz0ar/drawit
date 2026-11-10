@@ -5,4 +5,3 @@ pub mod user;
 pub use board::*;
 pub use refresh_token::*;
 pub use user::*;
-
