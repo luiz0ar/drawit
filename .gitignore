@@ -1,3 +1,50 @@
+# Ambiente e segredos
 .env
 .env.development
+.env.local
+*.env.*.local
+
+# Node / Frontend
+node_modules/
 */node_modules/
+.npm
+dist/
+dist-ssr/
+*.local
+
+# Rust / Backend
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Docker / Volumes locais
+mongo_data/
+
+# IDE e Sistema Operacional
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+.npm
+dist/
+dist-ssr/
+*.local
+
+# Rust / Backend
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Docker / Volumes locais
+mongo_data/
+
+# IDE e Sistema Operacional
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

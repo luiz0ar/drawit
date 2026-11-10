@@ -1,0 +1,31 @@
+[package]
+name = "drawit-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "limit", "request-id"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+mongodb = "3.1"
+thiserror = "1.0"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+jsonwebtoken = "9.3"
+argon2 = { version = "0.5", features = ["std"] }
+rand = "0.8"
+sha2 = "0.10"
+blake2 = "0.10"
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "7.1", features = ["axum"] }
+dotenvy = "0.15"
+
+[dev-dependencies]
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
+mime = "0.3"

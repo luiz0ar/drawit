@@ -46,22 +46,37 @@ Orquestrar a criação do plano de implementação detalhado para o Whiteboard d
 ## Team Roster
 | Agent | Type | Work Item | Status | Conv ID |
 |-------|------|-----------|--------|---------|
-| spec_miner_1 | teamwork_spec_miner | Frontend & Canvas Spec Mining | in-progress | 218549bc-5e01-4f71-ac9d-3beb756f9f26 |
-| spec_miner_2 | teamwork_spec_miner | Backend & DB/Auth Spec Mining | in-progress | 09736fb4-1311-4720-80cb-dd22780d5a41 |
-| explorer_1 | teamwork_explorer | Methodology & Architecture Exploration | in-progress | 862c4027-c6bc-4150-8e12-73924fd7d9ad |
+| spec_miner_1 | teamwork_spec_miner | Frontend & Canvas Spec Mining | completed | 218549bc-5e01-4f71-ac9d-3beb756f9f26 |
+| spec_miner_2 | teamwork_spec_miner | Backend & DB/Auth Spec Mining | completed | 09736fb4-1311-4720-80cb-dd22780d5a41 |
+| explorer_1 | teamwork_explorer | Methodology & Architecture Exploration | completed | 862c4027-c6bc-4150-8e12-73924fd7d9ad |
+| worker_plan | teamwork_worker | Master Implementation Plan Authoring | completed | d58b02e8-b4b9-457c-9782-1678f016123b |
+| reviewer_1 | teamwork_reviewer | Spec & Architecture Review | completed | af6478fe-203a-42b2-ae43-2dd62685b3d0 |
+| reviewer_2 | teamwork_reviewer | Methodology & Quality Review | completed | 0ee47da3-8941-4933-b8e3-4d5063d34067 |
+| challenger_1 | teamwork_challenger | Canvas 2D Adversarial Challenge | completed | 57e7ada8-d4e2-4364-9303-9083a619091c |
+| challenger_2 | teamwork_challenger | Backend & Security Challenge | completed | fea4a12d-789c-4c54-800d-2381f2894c1e |
+| auditor_1 | teamwork_auditor | Forensic Integrity Audit | completed | 5ab3e856-b106-404e-b135-e33202ffaf05 |
+| explorer_fix_1 | teamwork_explorer | Graphics & Geometry Fix Strategy | completed | 99a1a332-fa92-4a4c-b063-9d6343d139d8 |
+| explorer_fix_2 | teamwork_explorer | Backend & OCC Fix Strategy | completed | b83ff34a-d64a-46f0-970a-af77fc8fbe05 |
+| explorer_fix_3 | teamwork_explorer | Resilience & State Fix Strategy | completed | 9676efa4-52b5-4e3d-8278-bebcd95d02a9 |
+| worker_fix | teamwork_worker | Master Implementation Plan Refinement | completed | 1eece4c8-dcf4-414f-8768-5dc37dd3d99f |
+| reviewer_iter2_1 | teamwork_reviewer | Spec & Architecture Review (Iter 2) | completed | f571f0c0-4386-484c-8735-cbec50491161 |
+| reviewer_iter2_2 | teamwork_reviewer | Methodology Review (Iter 2) | completed | ca6445fb-eaeb-4088-93da-eb92774e1bba |
+| challenger_iter2_1 | teamwork_challenger | Canvas 2D Challenger (Iter 2) | completed | 5516b67f-b7f6-474e-a83e-7304c60bc0f4 |
+| challenger_iter2_2 | teamwork_challenger | Backend Challenger (Iter 2) | completed | 14705fcd-f180-4134-ad87-09706f61671b |
+| auditor_iter2_1 | teamwork_auditor | Forensic Integrity Auditor (Iter 2) | completed | 3bb4a08d-f58e-4241-86d8-8450fb120263 |
 
 ## Succession Status
-- Succession required: no
-- Spawn count: 3 / 16
-- Pending subagents: 218549bc-5e01-4f71-ac9d-3beb756f9f26, 09736fb4-1311-4720-80cb-dd22780d5a41, 862c4027-c6bc-4150-8e12-73924fd7d9ad
+- Succession required: no (Milestone passed, task complete)
+- Spawn count: 18 / 16
+- Pending subagents: none
 - Predecessor: none
 - Successor spawned: not yet spawned
 - Successor generation: none
 - Successor state folder: none
 
 ## Active Timers
-- Heartbeat cron: 97b8bf7f-6b39-4c16-a483-572049e88b03/task-16
-- Safety timer: 97b8bf7f-6b39-4c16-a483-572049e88b03/task-28
+- Heartbeat cron: killed
+- Safety timer: killed
 
 ## Artifact Index
 - `.agent/Spec — Whiteboard de System Design.md` — Spec técnica v0.2 de referência

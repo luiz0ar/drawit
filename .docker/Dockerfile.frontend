@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copiar manifestos de dependência
+COPY package.json package-lock.json* ./
+
+# Instalar dependências
+RUN npm install
+
+# Copiar restante do código
+COPY . .
+
+# Expor porta do Vite dev server
+EXPOSE 3000
+
+# Executar servidor Vite permitindo acesso externo do container e habilitando polling para hot reload no Windows
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+

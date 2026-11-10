@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/context/i18ncontext.tsx","./src/context/themecontext.tsx","./src/context/__tests__/themecontext.test.tsx","./src/lib/utils.ts"],"version":"5.9.3"}

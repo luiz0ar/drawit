@@ -1,4 +1,4 @@
-# BRIEFING — 2026-11-10T15:21:30Z
+# BRIEFING — 2026-11-10T15:25:30Z
 
 ## Mission
 Authoritative specification mining for backend, database, auth, quadros, grupos, and lixeira for drawit.
@@ -23,20 +23,24 @@ Authoritative specification mining for backend, database, auth, quadros, grupos,
 
 ## Current Parent
 - Conversation ID: 97b8bf7f-6b39-4c16-a483-572049e88b03
-- Updated: not yet
+- Updated: 2026-11-10T15:25:30Z
 
 ## Task Summary
 - **What to build**: Specification mining report for Backend, Database, Auth, Quadros, Grupos, Lixeira
 - **Success criteria**: Comprehensive feature discovery table, edge case table, MongoDB schemas, DTOs, endpoint contracts, RFC 7807 error model, handoff.md completed and reported to parent
 - **Interface contracts**: REST API contracts in handoff.md
-- **Code layout**: Backend in `backend/` (Rust Axum), frontend in `frontend/`
+- **Code layout**: Backend in `api/` (Rust Axum), frontend in `web/` (React + Vite)
 
 ## Key Decisions Made
 - Mining target set to Backend, Database, Auth, Quadros, Grupos, Lixeira, Containerization
-- Incorporating Section 14 resolutions
+- Incorporating Section 14 resolutions as project defaults
+- Full separation between `boards` (metadata) and `board_scenes` (dense canvas payload)
+- Optimistic Concurrency Control (OCC) implemented via monotonic `revision` increment in atomic MongoDB updates, returning HTTP 409 Conflict on mismatch
+- Refresh token family rotation with instant multi-token invalidation on replay detection
+- Completed comprehensive handoff report at `.agents/teamwork/spec_miner_2/handoff.md`
 
 ## Artifact Index
 - DISPATCH.md — dispatch instructions
 - progress.md — liveness heartbeat
 - BRIEFING.md — persistent working memory
-- handoff.md — final mining report
+- handoff.md — final mining report containing all features, edge cases, MongoDB schemas, REST contracts, and DTOs

@@ -1,0 +1,80 @@
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: drawit_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-drawit}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - drawit_network
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval \"db.adminCommand('ping')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./api
+      dockerfile: ../.docker/Dockerfile.backend
+    container_name: drawit_backend
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      APP_PORT: ${APP_PORT:-8080}
+      APP_ENV: ${APP_ENV:-development}
+      RUST_LOG: ${RUST_LOG:-info,drawit_api=debug}
+      MONGO_URL: ${MONGO_URL:-mongodb://mongo:27017/drawit}
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-drawit}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_drawit_jwt_development_key_minimum_32_chars!}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRATION_DAYS: ${REFRESH_TOKEN_EXPIRATION_DAYS:-7}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+    volumes:
+      - ./api:/app
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    networks:
+      - drawit_network
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: ../.docker/Dockerfile.frontend
+    container_name: drawit_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      VITE_API_URL: http://localhost:${APP_PORT:-8080}
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    networks:
+      - drawit_network
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
+    name: drawit_mongo_data
+  cargo_cache:
+    name: drawit_cargo_cache
+  target_cache:
+    name: drawit_target_cache
+
+networks:
+  drawit_network:
+    name: drawit_network
+    driver: bridge
+

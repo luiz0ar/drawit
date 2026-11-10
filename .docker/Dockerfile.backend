@@ -1,0 +1,26 @@
+FROM rust:bookworm
+
+WORKDIR /app
+
+# Instalar dependências para compilação e cargo-watch
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar cargo-watch para live-reload do backend em desenvolvimento
+RUN cargo install cargo-watch --locked
+
+# Copiar arquivos de dependências
+COPY Cargo.toml Cargo.lock* ./
+
+# Copiar código-fonte
+COPY src ./src
+
+# Expor a porta do backend
+EXPOSE 8080
+
+# Executar com cargo-watch para reconstrução automática a cada mudança em src
+CMD ["cargo", "watch", "-x", "run", "-w", "src"]

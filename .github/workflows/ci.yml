@@ -1,0 +1,56 @@
+name: CI DevSecOps
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-checks:
+    name: Backend (Rust / Axum)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Formatação (rustfmt)
+        run: cargo fmt --manifest-path api/Cargo.toml -- --check
+
+      - name: Linter (clippy)
+        run: cargo clippy --manifest-path api/Cargo.toml -- -D warnings
+
+      - name: Testes Unitários e Integração
+        run: cargo test --manifest-path api/Cargo.toml
+
+  frontend-checks:
+    name: Frontend (React / Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package.json
+
+      - name: Instalar dependências
+        run: npm --prefix web ci || npm --prefix web install
+
+      - name: Checagem de Tipagem TypeScript
+        run: npm --prefix web run build
+
+      - name: Testes Unitários (Vitest)
+        run: npm --prefix web run test -- --run
+

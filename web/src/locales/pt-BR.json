@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "drawit",
+    "tagline": "Whiteboard de System Design"
+  },
+  "auth": {
+    "login": "Entrar",
+    "register": "Cadastre-se",
+    "logout": "Sair",
+    "username": "Nome de usuário",
+    "password": "Senha",
+    "submit": "Prosseguir"
+  },
+  "board": {
+    "defaultTitle": "Quadro-{n}",
+    "newBoard": "Novo Quadro",
+    "saveStatus": {
+      "saved": "Salvo",
+      "saving": "Salvando...",
+      "offline": "Offline (Salvo localmente)",
+      "error": "Erro ao salvar"
+    }
+  },
+  "common": {
+    "loading": "Carregando...",
+    "error": "Ocorreu um erro",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar"
+  }
+}
+

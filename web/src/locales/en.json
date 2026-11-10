@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "drawit",
+    "tagline": "System Design Whiteboard"
+  },
+  "auth": {
+    "login": "Sign In",
+    "register": "Sign Up",
+    "logout": "Sign Out",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Continue"
+  },
+  "board": {
+    "defaultTitle": "Board-{n}",
+    "newBoard": "New Board",
+    "saveStatus": {
+      "saved": "Saved",
+      "saving": "Saving...",
+      "offline": "Offline (Saved locally)",
+      "error": "Failed to save"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  }
+}
+
