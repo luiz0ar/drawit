@@ -10,7 +10,7 @@ pub mod services;
 use axum::{
     http::{header, HeaderValue, Method},
     middleware::from_fn_with_state,
-    routing::{get, post},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use mongodb::Database;
@@ -54,12 +54,24 @@ pub fn create_router(state: AppState) -> Router {
         ])
         .allow_credentials(true);
 
-    // Rotas protegidas por JWT
+    // Protected routes requiring valid Bearer JWT
     let protected_routes = Router::new()
         .route("/auth/me", get(routes::users::me))
+        .route("/boards", get(routes::boards::list_boards))
+        .route("/boards", post(routes::boards::create_board))
+        .route("/boards/:id", get(routes::boards::get_board))
+        .route("/boards/:id", patch(routes::boards::update_board))
+        .route("/boards/:id", delete(routes::boards::delete_board))
+        .route("/boards/:id/restore", post(routes::boards::restore_board))
+        .route("/boards/:id/scene", get(routes::boards::get_scene))
+        .route("/boards/:id/scene", put(routes::boards::save_scene))
+        .route("/groups", get(routes::groups::list_groups))
+        .route("/groups", post(routes::groups::create_group))
+        .route("/groups/:id", patch(routes::groups::update_group))
+        .route("/groups/:id", delete(routes::groups::delete_group))
         .layer(from_fn_with_state(state.clone(), middleware::require_auth));
 
-    // Rotas públicas
+    // Public routes
     let public_routes = Router::new()
         .route("/health", get(routes::health::health))
         .route("/ready", get(routes::health::ready))

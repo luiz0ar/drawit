@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   MousePointer2,
   Hand,
@@ -23,6 +23,11 @@ import {
 import { CanvasEngine, Tool } from './engine/CanvasEngine';
 import { ViewportTransform, clampZoom } from './engine/coordinates';
 import { useTheme } from '../context/ThemeContext';
+import { Board, Group, BoardApi, GroupApi } from '../lib/api';
+import { useAutosave } from '../features/editor/useAutosave';
+import { BoardHeader } from '../features/boards/BoardHeader';
+import { BoardDrawer } from '../features/boards/BoardDrawer';
+import { ConflictDialog } from '../features/boards/ConflictDialog';
 
 export const Whiteboard: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -30,6 +35,7 @@ export const Whiteboard: React.FC = () => {
 
   const { resolvedTheme, setTheme } = useTheme();
 
+  // Active Tool & Canvas State
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [viewport, setViewport] = useState<ViewportTransform>({
     panX: 0,
@@ -38,6 +44,96 @@ export const Whiteboard: React.FC = () => {
   });
   const [selectedCount, setSelectedCount] = useState<number>(0);
 
+  // Boards & Groups State
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [activeBoard, setActiveBoard] = useState<Board | null>(null);
+  const [isTrashView, setIsTrashView] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [serverRevision, setServerRevision] = useState<number>(1);
+  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
+
+  // OCC Autosave Hook
+  const {
+    status: saveStatus,
+    conflictServerRevision,
+    scheduleSave,
+    resolveConflictByOverwrite,
+  } = useAutosave({
+    boardId: activeBoard?.id || null,
+    initialRevision: serverRevision,
+    onConflict: () => {
+      setIsConflictDialogOpen(true);
+    },
+  });
+
+  // Load Boards & Groups on mount
+  const refreshBoardList = useCallback(async (trash = false) => {
+    try {
+      const [fetchedBoards, fetchedGroups] = await Promise.all([
+        BoardApi.list(trash),
+        GroupApi.list(),
+      ]);
+      setBoards(fetchedBoards);
+      setGroups(fetchedGroups);
+      return fetchedBoards;
+    } catch {
+      // Offline or mock mode for standalone preview
+      const fallback: Board = {
+        id: 'local-board-1',
+        owner_id: 'local',
+        group_id: null,
+        title: 'Quadro-1',
+        tags: [],
+        is_favorite: false,
+        thumbnail: null,
+        is_deleted: false,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setBoards([fallback]);
+      return [fallback];
+    }
+  }, []);
+
+  // Load board scene
+  const loadBoardScene = useCallback(async (board: Board) => {
+    setActiveBoard(board);
+    try {
+      const scene = await BoardApi.getScene(board.id);
+      setServerRevision(scene.revision);
+      if (engineRef.current) {
+        engineRef.current.setElements(scene.elements || []);
+        if (scene.viewport) {
+          const vp = {
+            panX: scene.viewport.pan_x,
+            panY: scene.viewport.pan_y,
+            zoom: scene.viewport.zoom || 1.0,
+          };
+          engineRef.current.setViewport(vp);
+          setViewport(vp);
+        }
+      }
+    } catch {
+      // Fallback empty scene
+      setServerRevision(1);
+      if (engineRef.current) {
+        engineRef.current.setElements([]);
+      }
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    refreshBoardList(false).then((loadedBoards) => {
+      if (loadedBoards.length > 0 && !activeBoard) {
+        loadBoardScene(loadedBoards[0]);
+      }
+    });
+  }, [refreshBoardList, loadBoardScene]);
+
+  // Canvas engine initialization
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -47,9 +143,11 @@ export const Whiteboard: React.FC = () => {
       },
       onViewportChange: (vp) => {
         setViewport({ ...vp });
+        scheduleSave(engine.getElements(), vp);
       },
-      onElementsChange: () => {
+      onElementsChange: (elements) => {
         setActiveTool('select');
+        scheduleSave(elements, engine.getViewport());
       },
     });
 
@@ -71,7 +169,7 @@ export const Whiteboard: React.FC = () => {
       window.removeEventListener('resize', handleResize);
       engine.destroy();
     };
-  }, []);
+  }, [scheduleSave]);
 
   useEffect(() => {
     if (engineRef.current) {
@@ -88,27 +186,33 @@ export const Whiteboard: React.FC = () => {
 
   const handleZoom = (factor: number) => {
     if (!engineRef.current || !canvasRef.current) return;
-    const current = engineRef.current.getViewport();
-    const newZoom = clampZoom(current.zoom * factor);
+    const vp = engineRef.current.getViewport();
+    const newZoom = clampZoom(vp.zoom * factor);
 
-    const centerScreen = {
-      x: canvasRef.current.clientWidth / 2,
-      y: canvasRef.current.clientHeight / 2,
-    };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
 
-    const nextVp = {
-      ...current,
-      panX: centerScreen.x - (centerScreen.x - current.panX) * (newZoom / current.zoom),
-      panY: centerScreen.y - (centerScreen.y - current.panY) * (newZoom / current.zoom),
+    const worldX = (cx - vp.panX) / vp.zoom;
+    const worldY = (cy - vp.panY) / vp.zoom;
+
+    const newVp: ViewportTransform = {
+      panX: cx - worldX * newZoom,
+      panY: cy - worldY * newZoom,
       zoom: newZoom,
     };
 
-    engineRef.current.setViewport(nextVp);
+    engineRef.current.setViewport(newVp);
+    setViewport(newVp);
+    scheduleSave(engineRef.current.getElements(), newVp);
   };
 
   const handleResetZoom = () => {
     if (!engineRef.current) return;
-    engineRef.current.setViewport({ panX: 0, panY: 0, zoom: 1.0 });
+    const newVp: ViewportTransform = { panX: 0, panY: 0, zoom: 1.0 };
+    engineRef.current.setViewport(newVp);
+    setViewport(newVp);
+    scheduleSave(engineRef.current.getElements(), newVp);
   };
 
   const handleDelete = () => {
@@ -117,13 +221,150 @@ export const Whiteboard: React.FC = () => {
     }
   };
 
+  // Board management actions
+  const handleTitleChange = async (newTitle: string) => {
+    if (!activeBoard) return;
+    try {
+      const updated = await BoardApi.update(activeBoard.id, { title: newTitle });
+      setActiveBoard(updated);
+      setBoards((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+    } catch {
+      setActiveBoard({ ...activeBoard, title: newTitle });
+    }
+  };
+
+  const handleCreateBoard = async (title: string, groupId?: string | null) => {
+    try {
+      const newBoard = await BoardApi.create(title, groupId);
+      setBoards((prev) => [newBoard, ...prev]);
+      await loadBoardScene(newBoard);
+      setIsSidebarOpen(false);
+    } catch (err) {
+      console.error('Failed to create board:', err);
+    }
+  };
+
+  const handleDeleteBoard = async (boardId: string) => {
+    try {
+      await BoardApi.delete(boardId);
+      const remaining = boards.filter((b) => b.id !== boardId);
+      setBoards(remaining);
+      if (activeBoard?.id === boardId) {
+        if (remaining.length > 0) {
+          loadBoardScene(remaining[0]);
+        } else {
+          setActiveBoard(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete board:', err);
+    }
+  };
+
+  const handleRestoreBoard = async (boardId: string) => {
+    try {
+      await BoardApi.restore(boardId);
+      setBoards((prev) => prev.filter((b) => b.id !== boardId));
+    } catch (err) {
+      console.error('Failed to restore board:', err);
+    }
+  };
+
+  const handleCreateGroup = async (name: string) => {
+    try {
+      const group = await GroupApi.create(name);
+      setGroups((prev) => [...prev, group]);
+    } catch (err) {
+      console.error('Failed to create group:', err);
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string, action: 'move' | 'trash') => {
+    try {
+      await GroupApi.delete(groupId, action);
+      setGroups((prev) => prev.filter((g) => g.id !== groupId));
+      refreshBoardList(isTrashView);
+    } catch (err) {
+      console.error('Failed to delete group:', err);
+    }
+  };
+
+  const handleToggleTrashView = (showTrash: boolean) => {
+    setIsTrashView(showTrash);
+    refreshBoardList(showTrash);
+  };
+
+  const handleReloadConflict = () => {
+    if (activeBoard) {
+      loadBoardScene(activeBoard);
+    }
+    setIsConflictDialogOpen(false);
+  };
+
+  const handleOverwriteConflict = async () => {
+    if (engineRef.current) {
+      await resolveConflictByOverwrite(
+        engineRef.current.getElements(),
+        engineRef.current.getViewport()
+      );
+    }
+    setIsConflictDialogOpen(false);
+  };
+
+  const currentGroupName = groups.find((g) => g.id === activeBoard?.group_id)?.name;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background select-none">
-      {/* Top Floating Toolbar with Market Standard Lucide Icons (Zero Emojis) */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1.5 rounded-lg border bg-card/95 backdrop-blur shadow-md text-foreground">
-        {/* Navigation / Selection */}
+      {/* Top Left: Board Header with Inline Rename & Save Status */}
+      <div className="absolute top-4 left-4 z-20">
+        <BoardHeader
+          title={activeBoard?.title || 'Quadro-1'}
+          groupName={currentGroupName}
+          saveStatus={saveStatus}
+          isTrashView={isTrashView}
+          onTitleChange={handleTitleChange}
+          onToggleSidebar={() => setIsSidebarOpen(true)}
+          onResolveConflict={() => setIsConflictDialogOpen(true)}
+        />
+      </div>
+
+      {/* Boards & Folders Drawer */}
+      <BoardDrawer
+        isOpen={isSidebarOpen}
+        currentBoardId={activeBoard?.id || null}
+        boards={boards}
+        groups={groups}
+        isTrashView={isTrashView}
+        onClose={() => setIsSidebarOpen(false)}
+        onSelectBoard={(id) => {
+          const target = boards.find((b) => b.id === id);
+          if (target) {
+            loadBoardScene(target);
+            setIsSidebarOpen(false);
+          }
+        }}
+        onCreateBoard={handleCreateBoard}
+        onDeleteBoard={handleDeleteBoard}
+        onRestoreBoard={handleRestoreBoard}
+        onCreateGroup={handleCreateGroup}
+        onDeleteGroup={handleDeleteGroup}
+        onToggleTrashView={handleToggleTrashView}
+      />
+
+      {/* OCC Concurrency Conflict Dialog */}
+      <ConflictDialog
+        isOpen={isConflictDialogOpen}
+        serverRevision={conflictServerRevision}
+        onReload={handleReloadConflict}
+        onOverwrite={handleOverwriteConflict}
+        onClose={() => setIsConflictDialogOpen(false)}
+      />
+
+      {/* Floating Centered Toolbar: Strictly Lucide Icons (Zero Emojis) */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1.5 rounded-xl border bg-card/95 backdrop-blur shadow-md text-foreground">
+        {/* Navigation Tools */}
         <button
-          title="Select (V)"
+          title="Select / Pointer (V)"
           onClick={() => handleToolSelect('select')}
           className={`p-2 rounded hover:bg-muted transition-colors ${
             activeTool === 'select' ? 'bg-primary text-primary-foreground' : ''
@@ -133,7 +374,7 @@ export const Whiteboard: React.FC = () => {
         </button>
 
         <button
-          title="Hand / Pan (H)"
+          title="Hand / Pan (H or Space+Drag)"
           onClick={() => handleToolSelect('hand')}
           className={`p-2 rounded hover:bg-muted transition-colors ${
             activeTool === 'hand' ? 'bg-primary text-primary-foreground' : ''
@@ -144,7 +385,7 @@ export const Whiteboard: React.FC = () => {
 
         <div className="w-[1px] h-5 bg-border mx-1" />
 
-        {/* Geometric Shapes */}
+        {/* 2D Geometric Primitives */}
         <button
           title="Rectangle (R)"
           onClick={() => handleToolSelect('rectangle')}
@@ -156,7 +397,7 @@ export const Whiteboard: React.FC = () => {
         </button>
 
         <button
-          title="Ellipse (O)"
+          title="Ellipse / Circle (O)"
           onClick={() => handleToolSelect('ellipse')}
           className={`p-2 rounded hover:bg-muted transition-colors ${
             activeTool === 'ellipse' ? 'bg-primary text-primary-foreground' : ''
@@ -166,7 +407,7 @@ export const Whiteboard: React.FC = () => {
         </button>
 
         <button
-          title="Diamond (D)"
+          title="Diamond / Decision (D)"
           onClick={() => handleToolSelect('diamond')}
           className={`p-2 rounded hover:bg-muted transition-colors ${
             activeTool === 'diamond' ? 'bg-primary text-primary-foreground' : ''
@@ -195,7 +436,6 @@ export const Whiteboard: React.FC = () => {
           <Minus className="w-4 h-4" />
         </button>
 
-        {/* Magnetic Connected Arrow */}
         <button
           title="Magnetic Arrow Connector (A)"
           onClick={() => handleToolSelect('arrow')}

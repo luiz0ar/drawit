@@ -8,6 +8,7 @@ pub struct Group {
     pub owner_id: String,
     pub name: String,
     pub parent_id: Option<String>,
+    pub color: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
