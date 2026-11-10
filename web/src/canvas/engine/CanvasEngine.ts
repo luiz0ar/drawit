@@ -1,4 +1,4 @@
-import { CanvasElement } from './types';
+import { CanvasElement, ElementStyle } from './types';
 import {
   ViewportTransform,
   ScreenPoint,
@@ -7,7 +7,7 @@ import {
   zoomAtPoint,
   normalizeWheelDelta,
 } from './coordinates';
-import { hitTestElement } from './hitTest';
+import { hitTestElement, hitTestSelectionHandle, ResizeHandle } from './hitTest';
 import { CanvasRenderer } from './renderer';
 import { findClosestAnchor, computeAnchorWorldPosition, AnchorPosition } from './anchors';
 import { IT_COMPONENTS } from './components';
@@ -22,16 +22,23 @@ export type Tool =
   | 'line'
   | 'arrow'
   | 'text'
-  | 'database'
-  | 'server'
-  | 'browser'
-  | 'queue'
-  | 'cloud';
+  | 'sticky'
+  | 'freehand'
+  | 'eraser'
+  | keyof typeof IT_COMPONENTS;
 
 export interface CanvasEngineCallbacks {
-  onSelectionChange?: (selectedIds: string[]) => void;
+  onSelectionChange?: (selectedIds: string[], selectedElements: CanvasElement[]) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
   onViewportChange?: (viewport: ViewportTransform) => void;
+  onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
+  onEditElementText?: (element: CanvasElement) => void;
+}
+
+const MAX_HISTORY = 50;
+
+function cloneElements(elements: CanvasElement[]): CanvasElement[] {
+  return JSON.parse(JSON.stringify(elements));
 }
 
 export class CanvasEngine {
@@ -41,6 +48,11 @@ export class CanvasEngine {
 
   private elements: CanvasElement[] = [];
   private selectedIds: Set<string> = new Set();
+  private clipboard: CanvasElement[] = [];
+
+  // 50-level Undo/Redo Snapshot Stack (RF-E08)
+  private undoStack: CanvasElement[][] = [];
+  private redoStack: CanvasElement[][] = [];
 
   private activeTool: Tool = 'select';
   private viewport: ViewportTransform = { panX: 0, panY: 0, zoom: 1.0 };
@@ -50,9 +62,13 @@ export class CanvasEngine {
   private isPanning = false;
   private isDraggingElement = false;
   private isCreatingElement = false;
+  private isResizingElement = false;
+  private activeResizeHandle: ResizeHandle | null = null;
+  private resizeInitialElement: CanvasElement | null = null;
   private isSpacePressed = false;
 
-  private hoveredAnchor: { elementId: string; anchor: AnchorPosition; point: WorldPoint } | null = null;
+  private hoveredAnchor: { elementId: string; anchor: AnchorPosition; point: WorldPoint } | null =
+    null;
   private alignmentGuides: Array<{ orientation: 'horizontal' | 'vertical'; pos: number }> = [];
 
   private lastScreenPoint: ScreenPoint = { x: 0, y: 0 };
@@ -64,10 +80,7 @@ export class CanvasEngine {
   private isDirty = true;
   private theme: 'light' | 'dark' = 'light';
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    callbacks: CanvasEngineCallbacks = {}
-  ) {
+  constructor(canvas: HTMLCanvasElement, callbacks: CanvasEngineCallbacks = {}) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Canvas 2D context not available');
@@ -77,6 +90,54 @@ export class CanvasEngine {
 
     this.setupEventListeners();
     this.startRenderLoop();
+  }
+
+  private pushHistorySnapshot() {
+    this.undoStack.push(cloneElements(this.elements));
+    if (this.undoStack.length > MAX_HISTORY) {
+      this.undoStack.shift();
+    }
+    this.redoStack = [];
+    this.callbacks.onHistoryChange?.(this.canUndo(), this.canRedo());
+  }
+
+  public canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  public canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  public undo() {
+    if (this.undoStack.length === 0) return;
+    const prev = this.undoStack.pop()!;
+    this.redoStack.push(cloneElements(this.elements));
+    this.elements = prev;
+    this.selectedIds.clear();
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+    this.callbacks.onHistoryChange?.(this.canUndo(), this.canRedo());
+  }
+
+  public redo() {
+    if (this.redoStack.length === 0) return;
+    const next = this.redoStack.pop()!;
+    this.undoStack.push(cloneElements(this.elements));
+    this.elements = next;
+    this.selectedIds.clear();
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+    this.callbacks.onHistoryChange?.(this.canUndo(), this.canRedo());
+  }
+
+  private notifySelectionChange() {
+    this.callbacks.onSelectionChange?.(
+      Array.from(this.selectedIds),
+      this.getSelectedElements()
+    );
   }
 
   public setTheme(theme: 'light' | 'dark') {
@@ -102,8 +163,13 @@ export class CanvasEngine {
     return this.viewport;
   }
 
-  public setElements(elements: CanvasElement[]) {
+  public setElements(elements: CanvasElement[], resetHistory = true) {
     this.elements = elements;
+    if (resetHistory) {
+      this.undoStack = [];
+      this.redoStack = [];
+      this.callbacks.onHistoryChange?.(false, false);
+    }
     this.isDirty = true;
   }
 
@@ -116,21 +182,143 @@ export class CanvasEngine {
   }
 
   /**
+   * Updates style properties of all selected elements.
+   */
+  public updateSelectedStyle(partialStyle: Partial<ElementStyle>) {
+    if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id)) {
+        el.style = {
+          ...el.style,
+          ...partialStyle,
+          effect: partialStyle.effect ? { ...el.style.effect, ...partialStyle.effect } : el.style.effect,
+        };
+      }
+    }
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * Updates arrow routing mode ('straight' | 'orthogonal' | 'curved') on selected arrows.
+   */
+  public updateSelectedRouting(routing: 'straight' | 'orthogonal' | 'curved') {
+    if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id) && el.type === 'arrow') {
+        (el as any).routing = routing;
+      }
+    }
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * Updates the text/label of a specific element (RF-E04).
+   */
+  public updateElementText(elementId: string, newText: string) {
+    const target = this.elements.find((el) => el.id === elementId);
+    if (!target) return;
+    this.pushHistorySnapshot();
+    if (target.type === 'text') {
+      (target as any).text = newText;
+      target.label = newText;
+      const lines = newText.split('\n');
+      const maxLen = Math.max(...lines.map((l) => l.length), 4);
+      target.width = Math.max(80, maxLen * 9.5);
+      target.height = Math.max(28, lines.length * 22);
+    } else {
+      target.label = newText;
+    }
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * RF-E13: Toggle lock on selected elements
+   */
+  public toggleLockSelected() {
+    if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
+    const selected = this.getSelectedElements();
+    const allLocked = selected.every((el) => el.locked);
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id)) {
+        el.locked = !allLocked;
+      }
+    }
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
+   * RF-E10: Copy selected elements to internal clipboard
+   */
+  public copySelected() {
+    const selected = this.getSelectedElements();
+    if (selected.length === 0) return;
+    this.clipboard = cloneElements(selected);
+  }
+
+  /**
+   * RF-E10: Paste elements from internal clipboard with +20px offset
+   */
+  public pasteClipboard() {
+    if (this.clipboard.length === 0) return;
+    this.pushHistorySnapshot();
+    const newIds: string[] = [];
+    for (const item of this.clipboard) {
+      const copy: CanvasElement = JSON.parse(JSON.stringify(item));
+      copy.id = `${copy.type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      copy.x += 20;
+      copy.y += 20;
+      if (copy.type === 'arrow' && Array.isArray((copy as any).points)) {
+        (copy as any).points = (copy as any).points.map((pt: { x: number; y: number }) => ({
+          x: pt.x + 20,
+          y: pt.y + 20,
+        }));
+        (copy as any).startBinding = undefined;
+        (copy as any).endBinding = undefined;
+      }
+      this.elements.push(copy);
+      newIds.push(copy.id);
+    }
+    // Offset clipboard for subsequent pastes
+    for (const item of this.clipboard) {
+      item.x += 20;
+      item.y += 20;
+    }
+    this.selectedIds = new Set(newIds);
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  /**
    * Clean Detachment: When elements are deleted, arrows connected to them are detached
    * and frozen at their world anchor point rather than deleted.
    */
   public deleteSelected() {
     if (this.selectedIds.size === 0) return;
 
+    this.pushHistorySnapshot();
+
     const deletedIds = this.selectedIds;
     const deletedMap = new Map<string, CanvasElement>();
     for (const el of this.elements) {
-      if (deletedIds.has(el.id)) {
+      if (deletedIds.has(el.id) && !el.locked) {
         deletedMap.set(el.id, el);
       }
     }
 
-    // Update arrows that had bindings to deleted elements
+    if (deletedMap.size === 0) return;
+
     for (const el of this.elements) {
       if (el.type === 'arrow') {
         const arrow = el as any;
@@ -149,10 +337,10 @@ export class CanvasEngine {
       }
     }
 
-    this.elements = this.elements.filter((el) => !deletedIds.has(el.id));
+    this.elements = this.elements.filter((el) => !deletedMap.has(el.id));
     this.selectedIds.clear();
     this.isDirty = true;
-    this.callbacks.onSelectionChange?.([]);
+    this.notifySelectionChange();
     this.callbacks.onElementsChange?.(this.elements);
   }
 
@@ -161,6 +349,7 @@ export class CanvasEngine {
    */
   public groupSelected() {
     if (this.selectedIds.size < 2) return;
+    this.pushHistorySnapshot();
     const newGroupId = `grp_${Math.random().toString(36).substring(2, 9)}`;
     for (const el of this.elements) {
       if (this.selectedIds.has(el.id)) {
@@ -169,6 +358,7 @@ export class CanvasEngine {
       }
     }
     this.isDirty = true;
+    this.notifySelectionChange();
     this.callbacks.onElementsChange?.(this.elements);
   }
 
@@ -177,12 +367,14 @@ export class CanvasEngine {
    */
   public ungroupSelected() {
     if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
     for (const el of this.elements) {
       if (this.selectedIds.has(el.id) && el.groupIds && el.groupIds.length > 0) {
         el.groupIds.pop();
       }
     }
     this.isDirty = true;
+    this.notifySelectionChange();
     this.callbacks.onElementsChange?.(this.elements);
   }
 
@@ -191,6 +383,7 @@ export class CanvasEngine {
    */
   public bringToFront() {
     if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
     const selected: CanvasElement[] = [];
     const unselected: CanvasElement[] = [];
     for (const el of this.elements) {
@@ -210,6 +403,7 @@ export class CanvasEngine {
    */
   public sendToBack() {
     if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
     const selected: CanvasElement[] = [];
     const unselected: CanvasElement[] = [];
     for (const el of this.elements) {
@@ -224,13 +418,14 @@ export class CanvasEngine {
     this.callbacks.onElementsChange?.(this.elements);
   }
 
-  /**
-   * Move selected elements up one level in z-order
-   */
   public bringForward() {
     if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
     for (let i = this.elements.length - 2; i >= 0; i--) {
-      if (this.selectedIds.has(this.elements[i].id) && !this.selectedIds.has(this.elements[i + 1].id)) {
+      if (
+        this.selectedIds.has(this.elements[i].id) &&
+        !this.selectedIds.has(this.elements[i + 1].id)
+      ) {
         const temp = this.elements[i];
         this.elements[i] = this.elements[i + 1];
         this.elements[i + 1] = temp;
@@ -240,13 +435,14 @@ export class CanvasEngine {
     this.callbacks.onElementsChange?.(this.elements);
   }
 
-  /**
-   * Move selected elements down one level in z-order
-   */
   public sendBackward() {
     if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
     for (let i = 1; i < this.elements.length; i++) {
-      if (this.selectedIds.has(this.elements[i].id) && !this.selectedIds.has(this.elements[i - 1].id)) {
+      if (
+        this.selectedIds.has(this.elements[i].id) &&
+        !this.selectedIds.has(this.elements[i - 1].id)
+      ) {
         const temp = this.elements[i];
         this.elements[i] = this.elements[i - 1];
         this.elements[i - 1] = temp;
@@ -326,6 +522,7 @@ export class CanvasEngine {
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    this.canvas.addEventListener('dblclick', this.onDoubleClick);
 
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -337,6 +534,7 @@ export class CanvasEngine {
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('wheel', this.onWheel);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
 
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
@@ -345,6 +543,25 @@ export class CanvasEngine {
 
   private onAuxClick = (e: MouseEvent) => {
     if (e.button === 1) e.preventDefault();
+  };
+
+  private onDoubleClick = (e: MouseEvent) => {
+    const rect = this.canvas.getBoundingClientRect();
+    const screenPoint: ScreenPoint = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+    const worldPoint = screenToWorld(screenPoint, this.viewport);
+
+    for (let i = this.elements.length - 1; i >= 0; i--) {
+      if (hitTestElement(worldPoint, this.elements[i])) {
+        const hit = this.elements[i];
+        if (!hit.locked) {
+          this.callbacks.onEditElementText?.(hit);
+        }
+        return;
+      }
+    }
   };
 
   private onWheel = (e: WheelEvent) => {
@@ -385,7 +602,39 @@ export class CanvasEngine {
 
     if (e.button !== 0) return;
 
+    // Eraser tool: click to delete hit element
+    if (this.activeTool === 'eraser') {
+      for (let i = this.elements.length - 1; i >= 0; i--) {
+        if (hitTestElement(this.startWorldPoint, this.elements[i])) {
+          const hit = this.elements[i];
+          if (!hit.locked) {
+            this.selectedIds.clear();
+            this.selectedIds.add(hit.id);
+            this.deleteSelected();
+          }
+          break;
+        }
+      }
+      return;
+    }
+
     if (this.activeTool === 'select') {
+      // 1. Check if user clicked on a resize/rotate handle of a single selected element
+      if (this.selectedIds.size === 1) {
+        const selectedEl = this.getSelectedElements()[0];
+        if (selectedEl && !selectedEl.locked) {
+          const handle = hitTestSelectionHandle(screenPoint, selectedEl, this.viewport);
+          if (handle) {
+            this.pushHistorySnapshot();
+            this.isResizingElement = true;
+            this.activeResizeHandle = handle;
+            this.resizeInitialElement = JSON.parse(JSON.stringify(selectedEl));
+            return;
+          }
+        }
+      }
+
+      // 2. Hit test elements from top to bottom
       let hit: CanvasElement | null = null;
       for (let i = this.elements.length - 1; i >= 0; i--) {
         if (hitTestElement(this.startWorldPoint, this.elements[i])) {
@@ -395,11 +644,25 @@ export class CanvasEngine {
       }
 
       if (hit) {
-        if (!e.shiftKey) {
+        if (!e.shiftKey && !this.selectedIds.has(hit.id)) {
           this.selectedIds.clear();
         }
         this.selectedIds.add(hit.id);
-        this.isDraggingElement = true;
+
+        // If element belongs to a logical group, also select group members (RF-E11)
+        if (hit.groupIds && hit.groupIds.length > 0) {
+          const topGroupId = hit.groupIds[hit.groupIds.length - 1];
+          for (const el of this.elements) {
+            if (el.groupIds && el.groupIds.includes(topGroupId)) {
+              this.selectedIds.add(el.id);
+            }
+          }
+        }
+
+        if (!hit.locked) {
+          this.pushHistorySnapshot();
+          this.isDraggingElement = true;
+        }
       } else {
         if (!e.shiftKey) {
           this.selectedIds.clear();
@@ -407,16 +670,126 @@ export class CanvasEngine {
       }
 
       this.isDirty = true;
-      this.callbacks.onSelectionChange?.(Array.from(this.selectedIds));
+      this.notifySelectionChange();
+      return;
+    }
+
+    // Creating Text node (RF-E04)
+    if (this.activeTool === 'text') {
+      this.pushHistorySnapshot();
+      const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
+      const newTextEl: CanvasElement = {
+        id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'text',
+        text: 'Text label',
+        label: 'Text label',
+        fontFamily: 'sans',
+        fontSize: 16,
+        textAlign: 'left',
+        x: this.startWorldPoint.x,
+        y: this.startWorldPoint.y,
+        width: 110,
+        height: 28,
+        rotation: 0,
+        zIndex: this.elements.length + 1,
+        groupIds: [],
+        locked: false,
+        style: {
+          strokeColor,
+          fillColor: 'transparent',
+          strokeWidth: 2,
+          strokeStyle: 'solid',
+          opacity: 100,
+          effect: { type: 'none', intensity: 0 },
+        },
+        version: 1,
+      };
+      this.elements.push(newTextEl);
+      this.selectedIds.clear();
+      this.selectedIds.add(newTextEl.id);
+      this.activeTool = 'select';
+      this.isDirty = true;
+      this.notifySelectionChange();
+      this.callbacks.onElementsChange?.(this.elements);
+      this.callbacks.onEditElementText?.(newTextEl);
+      return;
+    }
+
+    // Creating Sticky Note (RF-E04)
+    if (this.activeTool === 'sticky') {
+      this.pushHistorySnapshot();
+      const newSticky: CanvasElement = {
+        id: `sticky-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'sticky',
+        label: 'Sticky note',
+        x: this.startWorldPoint.x - 75,
+        y: this.startWorldPoint.y - 65,
+        width: 150,
+        height: 130,
+        rotation: 0,
+        zIndex: this.elements.length + 1,
+        groupIds: [],
+        locked: false,
+        style: {
+          strokeColor: '#ca8a04',
+          fillColor: '#fef08a',
+          strokeWidth: 1.5,
+          strokeStyle: 'solid',
+          opacity: 100,
+          effect: { type: 'shadow', intensity: 10 },
+        },
+        version: 1,
+      };
+      this.elements.push(newSticky);
+      this.selectedIds.clear();
+      this.selectedIds.add(newSticky.id);
+      this.activeTool = 'select';
+      this.isDirty = true;
+      this.notifySelectionChange();
+      this.callbacks.onElementsChange?.(this.elements);
+      return;
+    }
+
+    // Creating Freehand Stroke (RF-E05)
+    if (this.activeTool === 'freehand') {
+      this.pushHistorySnapshot();
+      this.isCreatingElement = true;
+      const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
+      this.activeElement = {
+        id: `free-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'freehand',
+        x: this.startWorldPoint.x,
+        y: this.startWorldPoint.y,
+        width: 1,
+        height: 1,
+        rotation: 0,
+        zIndex: this.elements.length + 1,
+        groupIds: [],
+        locked: false,
+        style: {
+          strokeColor,
+          fillColor: 'transparent',
+          strokeWidth: 3,
+          strokeStyle: 'solid',
+          opacity: 100,
+          effect: { type: 'none', intensity: 0 },
+        },
+        version: 1,
+        points: [[0, 0, e.pressure || 0.5]],
+      };
+      this.elements.push(this.activeElement);
+      this.selectedIds.clear();
+      this.selectedIds.add(this.activeElement.id);
+      this.isDirty = true;
       return;
     }
 
     // Creating arrow connector
     if (this.activeTool === 'arrow') {
+      this.pushHistorySnapshot();
       this.isCreatingElement = true;
       const strokeColor = this.theme === 'dark' ? '#93c5fd' : '#2563eb';
 
-      // Check if starting snapped to an anchor
       const startAnchor = findClosestAnchor(this.startWorldPoint, this.elements);
       const startPt = startAnchor ? startAnchor.point : this.startWorldPoint;
 
@@ -440,7 +813,10 @@ export class CanvasEngine {
           effect: { type: 'none', intensity: 0 },
         },
         version: 1,
-        points: [{ x: startPt.x, y: startPt.y }, { x: startPt.x, y: startPt.y }],
+        points: [
+          { x: startPt.x, y: startPt.y },
+          { x: startPt.x, y: startPt.y },
+        ],
         startBinding: startAnchor
           ? { elementId: startAnchor.elementId, anchor: startAnchor.anchor }
           : undefined,
@@ -454,14 +830,9 @@ export class CanvasEngine {
       return;
     }
 
-    // Creating native IT Component
-    if (
-      this.activeTool === 'database' ||
-      this.activeTool === 'server' ||
-      this.activeTool === 'browser' ||
-      this.activeTool === 'queue' ||
-      this.activeTool === 'cloud'
-    ) {
+    // Creating native IT Component (all 20 P0 IT components supported)
+    if (this.activeTool in IT_COMPONENTS) {
+      this.pushHistorySnapshot();
       const compDef = IT_COMPONENTS[this.activeTool];
       const strokeColor = this.theme === 'dark' ? '#e2e8f0' : '#1e293b';
 
@@ -494,8 +865,8 @@ export class CanvasEngine {
       this.selectedIds.add(newComp.id);
       this.activeTool = 'select';
       this.isDirty = true;
+      this.notifySelectionChange();
       this.callbacks.onElementsChange?.(this.elements);
-      this.callbacks.onSelectionChange?.(Array.from(this.selectedIds));
       return;
     }
 
@@ -507,6 +878,7 @@ export class CanvasEngine {
       this.activeTool === 'triangle' ||
       this.activeTool === 'line'
     ) {
+      this.pushHistorySnapshot();
       this.isCreatingElement = true;
       const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
 
@@ -555,11 +927,7 @@ export class CanvasEngine {
     // Update magnetic anchor highlight while creating arrows
     if (this.activeTool === 'arrow') {
       const snap = findClosestAnchor(currentWorld, this.elements, this.activeElement?.id);
-      if (snap) {
-        this.hoveredAnchor = snap;
-      } else {
-        this.hoveredAnchor = null;
-      }
+      this.hoveredAnchor = snap || null;
       this.isDirty = true;
     }
 
@@ -570,6 +938,56 @@ export class CanvasEngine {
       this.viewport.panY += deltaScreenY;
       this.isDirty = true;
       this.callbacks.onViewportChange?.(this.viewport);
+      return;
+    }
+
+    // Interactive 8-handle Resize & Rotation (RF-E09)
+    if (this.isResizingElement && this.resizeInitialElement && this.activeResizeHandle) {
+      const el = this.elements.find((item) => item.id === this.resizeInitialElement!.id);
+      if (!el) return;
+
+      const init = this.resizeInitialElement;
+      const dx = currentWorld.x - this.startWorldPoint.x;
+      const dy = currentWorld.y - this.startWorldPoint.y;
+
+      if (this.activeResizeHandle === 'rotate') {
+        const cx = init.x + init.width / 2;
+        const cy = init.y + init.height / 2;
+        el.rotation = Math.atan2(currentWorld.y - cy, currentWorld.x - cx) + Math.PI / 2;
+      } else {
+        const h = this.activeResizeHandle;
+        if (h.includes('e')) {
+          el.width = Math.max(16, init.width + dx);
+        }
+        if (h.includes('s')) {
+          el.height = Math.max(16, init.height + dy);
+        }
+        if (h.includes('w')) {
+          const newW = Math.max(16, init.width - dx);
+          el.x = init.x + (init.width - newW);
+          el.width = newW;
+        }
+        if (h.includes('n')) {
+          const newH = Math.max(16, init.height - dy);
+          el.y = init.y + (init.height - newH);
+          el.height = newH;
+        }
+      }
+
+      this.recalculateArrowBindings();
+      this.isDirty = true;
+      return;
+    }
+
+    // Creating freehand stroke
+    if (this.isCreatingElement && this.activeElement && this.activeElement.type === 'freehand') {
+      const fh = this.activeElement as any;
+      const relX = currentWorld.x - fh.x;
+      const relY = currentWorld.y - fh.y;
+      fh.points.push([relX, relY, e.pressure || 0.5]);
+      fh.width = Math.max(fh.width, Math.abs(relX));
+      fh.height = Math.max(fh.height, Math.abs(relY));
+      this.isDirty = true;
       return;
     }
 
@@ -607,7 +1025,7 @@ export class CanvasEngine {
       const deltaWorldY = deltaScreenY / this.viewport.zoom;
 
       for (const el of this.elements) {
-        if (this.selectedIds.has(el.id)) {
+        if (this.selectedIds.has(el.id) && !el.locked) {
           el.x += deltaWorldX;
           el.y += deltaWorldY;
         }
@@ -617,7 +1035,7 @@ export class CanvasEngine {
       this.alignmentGuides = [];
       const SNAP_THRESHOLD = 6 / this.viewport.zoom;
       const draggedEl = this.elements.find(
-        (el) => this.selectedIds.has(el.id) && el.type !== 'arrow'
+        (el) => this.selectedIds.has(el.id) && el.type !== 'arrow' && !el.locked
       );
 
       if (draggedEl) {
@@ -629,29 +1047,25 @@ export class CanvasEngine {
           const otherCenterX = other.x + other.width / 2;
           const otherCenterY = other.y + other.height / 2;
 
-          // Center Y alignment
           if (Math.abs(draggedCenterY - otherCenterY) < SNAP_THRESHOLD) {
             const snapDeltaY = otherCenterY - draggedCenterY;
             for (const el of this.elements) {
-              if (this.selectedIds.has(el.id)) el.y += snapDeltaY;
+              if (this.selectedIds.has(el.id) && !el.locked) el.y += snapDeltaY;
             }
             this.alignmentGuides.push({ orientation: 'horizontal', pos: otherCenterY });
           }
 
-          // Center X alignment
           if (Math.abs(draggedCenterX - otherCenterX) < SNAP_THRESHOLD) {
             const snapDeltaX = otherCenterX - draggedCenterX;
             for (const el of this.elements) {
-              if (this.selectedIds.has(el.id)) el.x += snapDeltaX;
+              if (this.selectedIds.has(el.id) && !el.locked) el.x += snapDeltaX;
             }
             this.alignmentGuides.push({ orientation: 'vertical', pos: otherCenterX });
           }
         }
       }
 
-      // Re-anchor any attached arrows
       this.recalculateArrowBindings();
-
       this.isDirty = true;
       return;
     }
@@ -699,11 +1113,23 @@ export class CanvasEngine {
     this.hoveredAnchor = null;
     this.alignmentGuides = [];
 
+    if (this.isResizingElement) {
+      this.isResizingElement = false;
+      this.activeResizeHandle = null;
+      this.resizeInitialElement = null;
+      this.notifySelectionChange();
+      this.callbacks.onElementsChange?.(this.elements);
+      return;
+    }
+
     if (this.isCreatingElement) {
       this.isCreatingElement = false;
 
       if (this.activeElement) {
-        if (this.activeElement.type !== 'arrow') {
+        if (
+          this.activeElement.type !== 'arrow' &&
+          this.activeElement.type !== 'freehand'
+        ) {
           if (this.activeElement.width < 0) {
             this.activeElement.x += this.activeElement.width;
             this.activeElement.width = Math.abs(this.activeElement.width);
@@ -719,6 +1145,7 @@ export class CanvasEngine {
           }
         }
 
+        this.notifySelectionChange();
         this.callbacks.onElementsChange?.(this.elements);
         this.activeElement = null;
       }
@@ -728,6 +1155,7 @@ export class CanvasEngine {
 
     if (this.isDraggingElement) {
       this.isDraggingElement = false;
+      this.notifySelectionChange();
       this.callbacks.onElementsChange?.(this.elements);
     }
   };
@@ -751,8 +1179,28 @@ export class CanvasEngine {
       this.deleteSelected();
     }
 
-    // Layer ordering and grouping shortcuts
+    // Undo / Redo / Copy / Paste / Grouping / Layer ordering shortcuts
     if (e.ctrlKey || e.metaKey) {
+      if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        this.undo();
+        return;
+      }
+      if (e.key === 'y' || e.key === 'Y' || ((e.key === 'z' || e.key === 'Z') && e.shiftKey)) {
+        e.preventDefault();
+        this.redo();
+        return;
+      }
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        this.copySelected();
+        return;
+      }
+      if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        this.pasteClipboard();
+        return;
+      }
       if (e.key === 'g' && !e.shiftKey) {
         e.preventDefault();
         this.groupSelected();
@@ -773,6 +1221,7 @@ export class CanvasEngine {
         this.sendToBack();
         return;
       }
+      return;
     }
 
     if (e.key === 'v' || e.key === 'V') this.activeTool = 'select';
@@ -781,6 +1230,10 @@ export class CanvasEngine {
     if (e.key === 'o' || e.key === 'O') this.activeTool = 'ellipse';
     if (e.key === 'd' || e.key === 'D') this.activeTool = 'diamond';
     if (e.key === 'a' || e.key === 'A') this.activeTool = 'arrow';
+    if (e.key === 't' || e.key === 'T') this.activeTool = 'text';
+    if (e.key === 's' || e.key === 'S') this.activeTool = 'sticky';
+    if (e.key === 'p' || e.key === 'P') this.activeTool = 'freehand';
+    if (e.key === 'e' || e.key === 'E') this.activeTool = 'eraser';
   };
 
   private onKeyUp = (e: KeyboardEvent) => {

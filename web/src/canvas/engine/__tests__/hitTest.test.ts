@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { hitTestElement } from '../hitTest';
+import { hitTestElement, hitTestSelectionHandle } from '../hitTest';
+import { IT_COMPONENTS } from '../components';
 import { CanvasElement } from '../types';
 
-describe('Hit Testing Engine', () => {
+describe('Hit Testing Engine & 20 P0 IT Components', () => {
   const baseElement: CanvasElement = {
     id: 'el-1',
     type: 'rectangle',
@@ -52,9 +53,7 @@ describe('Hit Testing Engine', () => {
       height: 100,
     };
 
-    // Center is (150, 150)
     expect(hitTestElement({ x: 150, y: 150 }, diamond)).toBe(true);
-    // Outer corner (105, 105) is outside diamond boundary
     expect(hitTestElement({ x: 105, y: 105 }, diamond)).toBe(false);
   });
 
@@ -68,10 +67,43 @@ describe('Hit Testing Engine', () => {
       height: 100,
     };
 
-    // Near bottom center (inside)
     expect(hitTestElement({ x: 150, y: 180 }, triangle)).toBe(true);
-    // Top-left corner (outside)
     expect(hitTestElement({ x: 110, y: 110 }, triangle)).toBe(false);
   });
-});
 
+  it('detects 8 resize handles and rotation handle in screen space', () => {
+    const vp = { panX: 0, panY: 0, zoom: 1.0 };
+    expect(hitTestSelectionHandle({ x: 96, y: 96 }, baseElement, vp)).toBe('nw');
+    expect(hitTestSelectionHandle({ x: 304, y: 204 }, baseElement, vp)).toBe('se');
+    expect(hitTestSelectionHandle({ x: 200, y: 76 }, baseElement, vp)).toBe('rotate');
+  });
+
+  it('registers all 20 P0 IT Architecture components across 5 categories', () => {
+    const keys = Object.keys(IT_COMPONENTS);
+    expect(keys.length).toBe(20);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        'browser',
+        'mobile',
+        'laptop',
+        'user',
+        'server',
+        'microservice',
+        'worker',
+        'api_gateway',
+        'load_balancer',
+        'database',
+        'nosql',
+        'cache',
+        'object_storage',
+        'queue',
+        'event_stream',
+        'cloud',
+        'cdn',
+        'firewall',
+        'container',
+        'kubernetes',
+      ])
+    );
+  });
+});

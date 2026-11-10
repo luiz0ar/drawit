@@ -3,6 +3,22 @@ import { CanvasElement } from '../canvas/engine/types';
 
 export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080';
 
+export interface UserProfile {
+  id: string;
+  username: string;
+  preferences: {
+    theme?: 'light' | 'dark' | 'system';
+    language?: string;
+  };
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: UserProfile;
+}
+
 export interface Board {
   id: string;
   owner_id: string;
@@ -13,6 +29,7 @@ export interface Board {
   thumbnail: string | null;
   is_deleted: boolean;
   deleted_at: string | null;
+  last_opened_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +67,20 @@ export interface SaveScenePayload {
     pan_y: number;
     zoom: number;
   };
+  thumbnail?: string;
+}
+
+export interface BoardVersion {
+  id: string;
+  board_id: string;
+  revision: number;
+  label: string | null;
+  created_at: string;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
 }
 
 export interface ProblemDetails {
@@ -61,6 +92,7 @@ export interface ProblemDetails {
   code?: string;
   serverRevision?: number;
   invalidParams?: Array<{ name: string; reason: string }>;
+  invalid_params?: Array<{ name: string; reason: string }>;
 }
 
 export class ApiError extends Error {
@@ -73,30 +105,55 @@ export class ApiError extends Error {
   }
 }
 
-// Token management
-let currentAccessToken: string | null =
-  typeof window !== 'undefined' && typeof localStorage !== 'undefined'
-    ? localStorage.getItem('drawit_access_token')
-    : null;
+// Strictly in-memory token management (Spec §5.1 compliance — never stored in localStorage)
+let currentAccessToken: string | null = null;
+let refreshPromise: Promise<string | null> | null = null;
+let unauthorizedHandler: (() => void) | null = null;
 
 export function setAccessToken(token: string | null) {
   currentAccessToken = token;
-  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-    if (token) {
-      localStorage.setItem('drawit_access_token', token);
-    } else {
-      localStorage.removeItem('drawit_access_token');
-    }
-  }
 }
 
 export function getAccessToken(): string | null {
   return currentAccessToken;
 }
 
+export function setOnUnauthorized(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
+async function performTokenRefresh(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        currentAccessToken = null;
+        return null;
+      }
+      const data: AuthResponse = await response.json();
+      currentAccessToken = data.access_token;
+      return data.access_token;
+    } catch {
+      currentAccessToken = null;
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 export async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<T> {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
@@ -114,6 +171,23 @@ export async function request<T>(
     headers,
     credentials: 'include',
   });
+
+  if (
+    response.status === 401 &&
+    !isRetry &&
+    !endpoint.startsWith('/auth/login') &&
+    !endpoint.startsWith('/auth/register') &&
+    !endpoint.startsWith('/auth/refresh')
+  ) {
+    const newToken = await performTokenRefresh();
+    if (newToken) {
+      const retryHeaders = new Headers(options.headers || {});
+      retryHeaders.set('Authorization', `Bearer ${newToken}`);
+      return request<T>(endpoint, { ...options, headers: retryHeaders }, true);
+    } else {
+      unauthorizedHandler?.();
+    }
+  }
 
   if (!response.ok) {
     let problem: ProblemDetails;
@@ -138,10 +212,100 @@ export async function request<T>(
   return response.json();
 }
 
+// Auth API Endpoints
+export const AuthApi = {
+  register: async (username: string, password: string): Promise<AuthResponse> => {
+    const res = await request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    setAccessToken(res.access_token);
+    return res;
+  },
+
+  login: async (username: string, password: string): Promise<AuthResponse> => {
+    const res = await request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    setAccessToken(res.access_token);
+    return res;
+  },
+
+  refresh: async (): Promise<AuthResponse> => {
+    const res = await request<AuthResponse>('/auth/refresh', {
+      method: 'POST',
+    });
+    setAccessToken(res.access_token);
+    return res;
+  },
+
+  logout: async (): Promise<void> => {
+    try {
+      await request<void>('/auth/logout', { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+    }
+  },
+
+  logoutAll: async (): Promise<void> => {
+    try {
+      await request<void>('/auth/logout-all', { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+    }
+  },
+
+  changePassword: (current_password: string, new_password: string): Promise<void> =>
+    request<void>('/auth/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ current_password, new_password }),
+    }),
+
+  me: (): Promise<UserProfile> => request<UserProfile>('/auth/me'),
+
+  updatePreferences: (prefs: { theme?: string; language?: string }): Promise<UserProfile> =>
+    request<UserProfile>('/users/me/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(prefs),
+    }),
+};
+
+export interface ListBoardsParams {
+  trash?: boolean;
+  group_id?: string | null;
+  tags?: string[];
+  q?: string;
+  favorite?: boolean;
+  sort?: string;
+}
+
 // Board API Endpoints
 export const BoardApi = {
-  list: (trash = false): Promise<Board[]> =>
-    request<Board[]>(`/boards?trash=${trash}`),
+  list: (params: boolean | ListBoardsParams = false): Promise<Board[]> => {
+    if (typeof params === 'boolean') {
+      return request<Board[]>(`/boards?trash=${params}`);
+    }
+    const qs = new URLSearchParams();
+    if (params.trash !== undefined) qs.set('trash', String(params.trash));
+    if (params.group_id !== undefined && params.group_id !== null) {
+      qs.set('group_id', params.group_id);
+    }
+    if (params.tags && params.tags.length > 0) {
+      qs.set('tags', params.tags.join(','));
+    }
+    if (params.q && params.q.trim()) {
+      qs.set('q', params.q.trim());
+    }
+    if (params.favorite !== undefined) {
+      qs.set('favorite', String(params.favorite));
+    }
+    if (params.sort) {
+      qs.set('sort', params.sort);
+    }
+    const queryStr = qs.toString();
+    return request<Board[]>(`/boards${queryStr ? `?${queryStr}` : ''}`);
+  },
 
   create: (title: string, group_id?: string | null): Promise<Board> =>
     request<Board>('/boards', {
@@ -154,11 +318,22 @@ export const BoardApi = {
 
   update: (
     boardId: string,
-    updates: { title?: string; group_id?: string | null; is_favorite?: boolean }
+    updates: {
+      title?: string;
+      group_id?: string | null;
+      tags?: string[];
+      is_favorite?: boolean;
+      thumbnail?: string | null;
+    }
   ): Promise<Board> =>
     request<Board>(`/boards/${boardId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+    }),
+
+  duplicate: (boardId: string): Promise<Board> =>
+    request<Board>(`/boards/${boardId}/duplicate`, {
+      method: 'POST',
     }),
 
   delete: (boardId: string): Promise<void> =>
@@ -166,10 +341,22 @@ export const BoardApi = {
       method: 'DELETE',
     }),
 
+  permanentDelete: (boardId: string): Promise<void> =>
+    request<void>(`/boards/${boardId}/permanent`, {
+      method: 'DELETE',
+    }),
+
   restore: (boardId: string): Promise<void> =>
     request<void>(`/boards/${boardId}/restore`, {
       method: 'POST',
     }),
+
+  emptyTrash: (): Promise<{ deleted_count: number }> =>
+    request<{ deleted_count: number }>('/trash/empty', {
+      method: 'POST',
+    }),
+
+  listTags: (): Promise<TagCount[]> => request<TagCount[]>('/tags'),
 
   getScene: (boardId: string): Promise<Scene> =>
     request<Scene>(`/boards/${boardId}/scene`),
@@ -181,6 +368,20 @@ export const BoardApi = {
     request<{ status: string; revision: number }>(`/boards/${boardId}/scene`, {
       method: 'PUT',
       body: JSON.stringify(payload),
+    }),
+
+  listVersions: (boardId: string): Promise<BoardVersion[]> =>
+    request<BoardVersion[]>(`/boards/${boardId}/versions`),
+
+  createVersion: (boardId: string, label?: string): Promise<BoardVersion> =>
+    request<BoardVersion>(`/boards/${boardId}/versions`, {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    }),
+
+  restoreVersion: (boardId: string, versionId: string): Promise<Scene> =>
+    request<Scene>(`/boards/${boardId}/versions/${versionId}/restore`, {
+      method: 'POST',
     }),
 };
 

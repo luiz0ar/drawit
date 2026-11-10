@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
-use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::models::bson_date::flexible_datetime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -9,15 +10,18 @@ pub struct User {
     pub id: String,
     pub username: String,
     pub password_hash: String,
+    #[serde(default)]
     pub preferences: UserPreferences,
+    #[serde(with = "flexible_datetime")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "flexible_datetime")]
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPreferences {
-    pub theme: String,    // "light" | "dark" | "system"
-    pub language: String, // "pt-BR"
+    pub theme: String,
+    pub language: String,
 }
 
 impl Default for UserPreferences {

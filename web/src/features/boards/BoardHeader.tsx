@@ -8,9 +8,12 @@ import {
   Menu,
   Edit2,
   Folder,
+  LayoutGrid,
+  History,
 } from 'lucide-react';
 import { SaveStatus } from '../editor/useAutosave';
 import { validateBoardTitle } from './titleGenerator';
+import { navigate } from '../../lib/router';
 
 interface BoardHeaderProps {
   title: string;
@@ -20,6 +23,7 @@ interface BoardHeaderProps {
   onTitleChange: (newTitle: string) => Promise<void>;
   onToggleSidebar: () => void;
   onResolveConflict?: () => void;
+  onOpenVersions?: () => void;
 }
 
 export const BoardHeader: React.FC<BoardHeaderProps> = ({
@@ -30,6 +34,7 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
   onTitleChange,
   onToggleSidebar,
   onResolveConflict,
+  onOpenVersions,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentTitle, setCurrentTitle] = useState(title);
@@ -66,11 +71,21 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
+      {/* Back to Dashboard (/boards) */}
+      <button
+        onClick={() => navigate('/boards')}
+        title="Back to Boards Dashboard"
+        className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors flex items-center gap-1.5 text-xs font-medium"
+      >
+        <LayoutGrid className="w-4 h-4 text-primary" />
+        <span className="hidden md:inline">Dashboard</span>
+      </button>
+
       {/* Sidebar toggle */}
       <button
         onClick={onToggleSidebar}
-        title="Open Boards and Folders"
+        title="Open Quick Boards Drawer"
         className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors"
       >
         <Menu className="w-4 h-4" />
@@ -114,9 +129,9 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
             title={isTrashView ? 'Archived in trash' : 'Click to rename board'}
             className="flex items-center gap-1.5 text-sm font-semibold text-foreground hover:text-primary transition-colors text-left"
           >
-            <span>{title}</span>
+            <span className="truncate max-w-[160px] sm:max-w-[220px]">{title}</span>
             {!isTrashView && (
-              <Edit2 className="w-3 h-3 text-muted-foreground opacity-60 hover:opacity-100" />
+              <Edit2 className="w-3 h-3 text-muted-foreground opacity-60 hover:opacity-100 shrink-0" />
             )}
           </button>
         )}
@@ -128,19 +143,19 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
           {saveStatus === 'saved' && (
             <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
               <Check className="w-3.5 h-3.5" />
-              <span>Saved</span>
+              <span className="hidden sm:inline">Saved</span>
             </span>
           )}
           {saveStatus === 'saving' && (
             <span className="flex items-center gap-1 text-muted-foreground">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-              <span>Saving...</span>
+              <span className="hidden sm:inline">Saving...</span>
             </span>
           )}
           {saveStatus === 'idle' && (
             <span className="flex items-center gap-1 text-muted-foreground">
               <Clock className="w-3.5 h-3.5" />
-              <span>Unsaved</span>
+              <span className="hidden sm:inline">Unsaved</span>
             </span>
           )}
           {saveStatus === 'conflict' && (
@@ -160,8 +175,20 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
             </span>
           )}
         </div>
+
+        {onOpenVersions && (
+          <>
+            <div className="w-[1px] h-4 bg-border mx-1" />
+            <button
+              onClick={onOpenVersions}
+              title="Version History & Checkpoints"
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <History className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 };
-

@@ -13,6 +13,18 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdatePreferencesRequest {
+    pub theme: Option<String>,
+    pub language: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthResponse {
     pub access_token: String,

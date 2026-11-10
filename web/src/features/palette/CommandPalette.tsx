@@ -21,8 +21,14 @@ import {
   HelpCircle,
   Copy,
   ChevronRight,
+  Type,
+  StickyNote,
+  PenTool,
+  Eraser,
+  Cpu,
 } from 'lucide-react';
 import { Tool } from '../../canvas/engine/CanvasEngine';
+import { IT_COMPONENTS } from '../../canvas/engine/components';
 
 export interface CommandItem {
   id: string;
@@ -68,8 +74,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const commands: CommandItem[] = useMemo(
-    () => [
+  const commands: CommandItem[] = useMemo(() => {
+    const itComponentCommands: CommandItem[] = Object.values(IT_COMPONENTS).map((comp) => ({
+      id: `it-${comp.key}`,
+      title: `${comp.name} (${comp.category})`,
+      category: 'IT Architecture',
+      icon:
+        comp.category === 'data'
+          ? Database
+          : comp.category === 'backend'
+          ? Server
+          : comp.category === 'clients'
+          ? Globe
+          : comp.category === 'messaging'
+          ? Layers
+          : comp.category === 'infra'
+          ? Cloud
+          : Cpu,
+      action: () => onSelectTool(comp.key as Tool),
+    }));
+
+    return [
       // Tools
       {
         id: 'tool-select',
@@ -133,43 +158,41 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         shortcut: 'A',
         action: () => onSelectTool('arrow'),
       },
+      {
+        id: 'tool-text',
+        title: 'Text Label',
+        category: 'Tools',
+        icon: Type,
+        shortcut: 'T',
+        action: () => onSelectTool('text'),
+      },
+      {
+        id: 'tool-sticky',
+        title: 'Sticky Note',
+        category: 'Tools',
+        icon: StickyNote,
+        shortcut: 'S',
+        action: () => onSelectTool('sticky'),
+      },
+      {
+        id: 'tool-freehand',
+        title: 'Freehand Pencil',
+        category: 'Tools',
+        icon: PenTool,
+        shortcut: 'P',
+        action: () => onSelectTool('freehand'),
+      },
+      {
+        id: 'tool-eraser',
+        title: 'Eraser Tool',
+        category: 'Tools',
+        icon: Eraser,
+        shortcut: 'E',
+        action: () => onSelectTool('eraser'),
+      },
 
-      // IT Components
-      {
-        id: 'it-db',
-        title: 'Database (SQL Engine)',
-        category: 'IT Architecture',
-        icon: Database,
-        action: () => onSelectTool('database'),
-      },
-      {
-        id: 'it-server',
-        title: 'Server / Backend Service',
-        category: 'IT Architecture',
-        icon: Server,
-        action: () => onSelectTool('server'),
-      },
-      {
-        id: 'it-browser',
-        title: 'Web Browser / Client',
-        category: 'IT Architecture',
-        icon: Globe,
-        action: () => onSelectTool('browser'),
-      },
-      {
-        id: 'it-queue',
-        title: 'Message Queue / Event Broker',
-        category: 'IT Architecture',
-        icon: Layers,
-        action: () => onSelectTool('queue'),
-      },
-      {
-        id: 'it-cloud',
-        title: 'Cloud Infrastructure',
-        category: 'IT Architecture',
-        icon: Cloud,
-        action: () => onSelectTool('cloud'),
-      },
+      // All 20 IT Components
+      ...itComponentCommands,
 
       // Arrange
       {
@@ -251,21 +274,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         shortcut: '?',
         action: onOpenShortcuts,
       },
-    ],
-    [
-      onSelectTool,
-      onResetZoom,
-      onExportPng,
-      onExportSvg,
-      onExportJson,
-      onImportJson,
-      onGroupSelected,
-      onUngroupSelected,
-      onBringToFront,
-      onSendToBack,
-      onOpenShortcuts,
-    ]
-  );
+    ];
+  }, [
+    onSelectTool,
+    onResetZoom,
+    onExportPng,
+    onExportSvg,
+    onExportJson,
+    onImportJson,
+    onGroupSelected,
+    onUngroupSelected,
+    onBringToFront,
+    onSendToBack,
+    onOpenShortcuts,
+  ]);
 
   const filteredCommands = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -318,13 +340,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         className="w-full max-w-lg bg-card border rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Search Input */}
         <div className="flex items-center px-4 py-3 border-b">
           <Search className="w-4 h-4 text-muted-foreground mr-3 shrink-0" />
           <input
             ref={inputRef}
             type="text"
-            placeholder="Type a command or search tools..."
+            placeholder="Type a command or search 20 IT components..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -335,7 +356,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </kbd>
         </div>
 
-        {/* Command List */}
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filteredCommands.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">
@@ -394,4 +414,3 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     </div>
   );
 };
-

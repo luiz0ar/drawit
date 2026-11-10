@@ -16,26 +16,37 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Trash2,
   Sun,
   Moon,
   Search,
   Download,
   HelpCircle,
-  Copy,
-  ChevronRight,
-  ChevronLeft,
+  Undo2,
+  Redo2,
+  Type,
+  StickyNote,
+  PenTool,
+  Eraser,
+  Boxes,
+  X,
+  History,
+  Plus,
+  RotateCcw,
 } from 'lucide-react';
 import { CanvasEngine, Tool } from './engine/CanvasEngine';
+import { CanvasElement, ElementStyle } from './engine/types';
 import { ViewportTransform, clampZoom } from './engine/coordinates';
+import { IT_COMPONENTS, ComponentCategory } from './engine/components';
 import { useTheme } from '../context/ThemeContext';
-import { Board, Group, BoardApi, GroupApi } from '../lib/api';
-import { useAutosave } from '../features/editor/useAutosave';
+import { Board, Group, BoardVersion, BoardApi, GroupApi } from '../lib/api';
+import { navigate } from '../lib/router';
+import { useAutosave, computeContentHash } from '../features/editor/useAutosave';
 import { BoardHeader } from '../features/boards/BoardHeader';
 import { BoardDrawer } from '../features/boards/BoardDrawer';
 import { ConflictDialog } from '../features/boards/ConflictDialog';
 import { CommandPalette } from '../features/palette/CommandPalette';
 import { ShortcutsModal } from '../features/palette/ShortcutsModal';
+import { StyleInspector } from './ui/StyleInspector';
 import {
   downloadPngFile,
   downloadSvgFile,
@@ -45,7 +56,19 @@ import {
   parseAndValidateDrawitJson,
 } from './export/jsonExporter';
 
-export const Whiteboard: React.FC = () => {
+interface WhiteboardProps {
+  boardId?: string;
+}
+
+const CATEGORY_LABELS: Record<ComponentCategory, string> = {
+  clients: 'Clients & Edge',
+  backend: 'Backend & Compute',
+  data: 'Data & Storage',
+  messaging: 'Messaging & Streaming',
+  infra: 'Infrastructure & Network',
+};
+
+export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<CanvasEngine | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -59,14 +82,26 @@ export const Whiteboard: React.FC = () => {
     panY: 0,
     zoom: 1.0,
   });
-  const [selectedCount, setSelectedCount] = useState<number>(0);
+  const [selectedElements, setSelectedElements] = useState<CanvasElement[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Modals & Panels State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isComponentLibraryOpen, setIsComponentLibraryOpen] = useState(false);
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
+
+  // In-place Text / Label Editor State (RF-E04)
+  const [editingElement, setEditingElement] = useState<CanvasElement | null>(null);
+  const [editingTextValue, setEditingTextValue] = useState('');
+
+  // Version History State (RF-Q11)
+  const [isVersionsModalOpen, setIsVersionsModalOpen] = useState(false);
+  const [versions, setVersions] = useState<BoardVersion[]>([]);
+  const [newVersionLabel, setNewVersionLabel] = useState('');
 
   // Boards & Groups State
   const [boards, setBoards] = useState<Board[]>([]);
@@ -81,6 +116,7 @@ export const Whiteboard: React.FC = () => {
     conflictServerRevision,
     scheduleSave,
     resolveConflictByOverwrite,
+    setSavedHash,
   } = useAutosave({
     boardId: activeBoard?.id || null,
     initialRevision: serverRevision,
@@ -89,11 +125,11 @@ export const Whiteboard: React.FC = () => {
     },
   });
 
-  // Load Boards & Groups on mount
+  // Load Boards & Groups
   const refreshBoardList = useCallback(async (trash = false) => {
     try {
       const [fetchedBoards, fetchedGroups] = await Promise.all([
-        BoardApi.list(trash),
+        BoardApi.list({ trash }),
         GroupApi.list(),
       ]);
       setBoards(fetchedBoards);
@@ -119,39 +155,65 @@ export const Whiteboard: React.FC = () => {
   }, []);
 
   // Load board scene
-  const loadBoardScene = useCallback(async (board: Board) => {
-    setActiveBoard(board);
-    try {
-      const scene = await BoardApi.getScene(board.id);
-      setServerRevision(scene.revision);
-      if (engineRef.current) {
-        engineRef.current.setElements(scene.elements || []);
-        if (scene.viewport) {
-          const vp = {
-            panX: scene.viewport.pan_x,
-            panY: scene.viewport.pan_y,
-            zoom: scene.viewport.zoom || 1.0,
-          };
+  const loadBoardScene = useCallback(
+    async (board: Board) => {
+      setActiveBoard(board);
+      try {
+        const scene = await BoardApi.getScene(board.id);
+        setServerRevision(scene.revision);
+        if (engineRef.current) {
+          const els = scene.elements || [];
+          const vp = scene.viewport
+            ? {
+                panX: scene.viewport.pan_x,
+                panY: scene.viewport.pan_y,
+                zoom: scene.viewport.zoom || 1.0,
+              }
+            : { panX: 0, panY: 0, zoom: 1.0 };
+          engineRef.current.setElements(els, true);
           engineRef.current.setViewport(vp);
           setViewport(vp);
+          setSavedHash(computeContentHash(els, vp));
+        }
+      } catch {
+        setServerRevision(1);
+        if (engineRef.current) {
+          engineRef.current.setElements([], true);
         }
       }
-    } catch {
-      setServerRevision(1);
-      if (engineRef.current) {
-        engineRef.current.setElements([]);
-      }
-    }
-  }, []);
+    },
+    [setSavedHash]
+  );
 
-  // Initial load
+  // Initial load based on boardId prop or first board
   useEffect(() => {
-    refreshBoardList(false).then((loadedBoards) => {
-      if (loadedBoards.length > 0 && !activeBoard) {
-        loadBoardScene(loadedBoards[0]);
+    let mounted = true;
+    refreshBoardList(false).then(async (loadedBoards) => {
+      if (!mounted) return;
+      if (boardId) {
+        const found = loadedBoards.find((b) => b.id === boardId);
+        if (found) {
+          await loadBoardScene(found);
+          return;
+        }
+        try {
+          const single = await BoardApi.get(boardId);
+          if (mounted) {
+            await loadBoardScene(single);
+          }
+          return;
+        } catch {
+          // Fallback to first board
+        }
+      }
+      if (loadedBoards.length > 0) {
+        await loadBoardScene(loadedBoards[0]);
       }
     });
-  }, [refreshBoardList, loadBoardScene]);
+    return () => {
+      mounted = false;
+    };
+  }, [boardId, refreshBoardList, loadBoardScene]);
 
   // Global Keyboard Shortcuts (Ctrl+K for Command Palette, ? for Shortcuts)
   useEffect(() => {
@@ -179,21 +241,31 @@ export const Whiteboard: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // Canvas engine initialization
+  // Canvas engine initialization (runs once per mount since scheduleSave is stable)
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const engine = new CanvasEngine(canvasRef.current, {
-      onSelectionChange: (ids) => {
-        setSelectedCount(ids.length);
+      onSelectionChange: (_ids, els) => {
+        setSelectedElements([...els]);
       },
       onViewportChange: (vp) => {
         setViewport({ ...vp });
         scheduleSave(engine.getElements(), vp);
       },
       onElementsChange: (elements) => {
-        setActiveTool('select');
+        setActiveTool(engine.getTool());
         scheduleSave(elements, engine.getViewport());
+      },
+      onHistoryChange: (undoAvailable, redoAvailable) => {
+        setCanUndo(undoAvailable);
+        setCanRedo(redoAvailable);
+      },
+      onEditElementText: (el) => {
+        setEditingElement(el);
+        setEditingTextValue(
+          el.type === 'text' ? (el as any).text || el.label || '' : el.label || ''
+        );
       },
     });
 
@@ -225,6 +297,7 @@ export const Whiteboard: React.FC = () => {
 
   const handleToolSelect = (tool: Tool) => {
     setActiveTool(tool);
+    setIsComponentLibraryOpen(false);
     if (engineRef.current) {
       engineRef.current.setTool(tool);
     }
@@ -262,12 +335,9 @@ export const Whiteboard: React.FC = () => {
   };
 
   const handleDelete = () => {
-    if (engineRef.current) {
-      engineRef.current.deleteSelected();
-    }
+    engineRef.current?.deleteSelected();
   };
 
-  // Layer Ordering & Grouping actions
   const handleGroupSelected = () => {
     engineRef.current?.groupSelected();
   };
@@ -282,6 +352,69 @@ export const Whiteboard: React.FC = () => {
 
   const handleSendToBack = () => {
     engineRef.current?.sendToBack();
+  };
+
+  const handleUpdateStyle = (partial: Partial<ElementStyle>) => {
+    engineRef.current?.updateSelectedStyle(partial);
+  };
+
+  const handleUpdateRouting = (routing: 'straight' | 'orthogonal' | 'curved') => {
+    engineRef.current?.updateSelectedRouting(routing);
+  };
+
+  const handleToggleLock = () => {
+    engineRef.current?.toggleLockSelected();
+  };
+
+  const handleDuplicateSelected = () => {
+    engineRef.current?.copySelected();
+    engineRef.current?.pasteClipboard();
+  };
+
+  const handleSaveEditedText = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingElement && engineRef.current) {
+      engineRef.current.updateElementText(editingElement.id, editingTextValue.trim());
+    }
+    setEditingElement(null);
+  };
+
+  // Version History actions (RF-Q11)
+  const handleOpenVersions = async () => {
+    if (!activeBoard || activeBoard.id.startsWith('local-')) return;
+    setIsVersionsModalOpen(true);
+    try {
+      const list = await BoardApi.listVersions(activeBoard.id);
+      setVersions(list);
+    } catch {
+      setVersions([]);
+    }
+  };
+
+  const handleCreateVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeBoard) return;
+    try {
+      const created = await BoardApi.createVersion(
+        activeBoard.id,
+        newVersionLabel.trim() || undefined
+      );
+      setVersions((prev) => [created, ...prev]);
+      setNewVersionLabel('');
+    } catch (err) {
+      console.error('Failed to create version checkpoint:', err);
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string) => {
+    if (!activeBoard) return;
+    try {
+      await BoardApi.restoreVersion(activeBoard.id, versionId);
+      await loadBoardScene(activeBoard);
+      setIsVersionsModalOpen(false);
+    } catch (err) {
+      console.error('Failed to restore version:', err);
+    }
   };
 
   // Export & Import actions
@@ -360,23 +493,23 @@ export const Whiteboard: React.FC = () => {
     try {
       const newBoard = await BoardApi.create(title, groupId);
       setBoards((prev) => [newBoard, ...prev]);
-      await loadBoardScene(newBoard);
       setIsSidebarOpen(false);
+      navigate(`/boards/${newBoard.id}`);
     } catch (err) {
       console.error('Failed to create board:', err);
     }
   };
 
-  const handleDeleteBoard = async (boardId: string) => {
+  const handleDeleteBoard = async (targetBoardId: string) => {
     try {
-      await BoardApi.delete(boardId);
-      const remaining = boards.filter((b) => b.id !== boardId);
+      await BoardApi.delete(targetBoardId);
+      const remaining = boards.filter((b) => b.id !== targetBoardId);
       setBoards(remaining);
-      if (activeBoard?.id === boardId) {
+      if (activeBoard?.id === targetBoardId) {
         if (remaining.length > 0) {
-          loadBoardScene(remaining[0]);
+          navigate(`/boards/${remaining[0].id}`);
         } else {
-          setActiveBoard(null);
+          navigate('/boards');
         }
       }
     } catch (err) {
@@ -384,10 +517,10 @@ export const Whiteboard: React.FC = () => {
     }
   };
 
-  const handleRestoreBoard = async (boardId: string) => {
+  const handleRestoreBoard = async (targetBoardId: string) => {
     try {
-      await BoardApi.restore(boardId);
-      setBoards((prev) => prev.filter((b) => b.id !== boardId));
+      await BoardApi.restore(targetBoardId);
+      setBoards((prev) => prev.filter((b) => b.id !== targetBoardId));
     } catch (err) {
       console.error('Failed to restore board:', err);
     }
@@ -447,7 +580,7 @@ export const Whiteboard: React.FC = () => {
         onChange={handleFileChange}
       />
 
-      {/* Top Left: Board Header with Inline Rename & Save Status */}
+      {/* Top Left: Board Header with Back to Dashboard, Inline Rename & Save Status */}
       <div className="absolute top-4 left-4 z-20">
         <BoardHeader
           title={boardTitle}
@@ -457,10 +590,11 @@ export const Whiteboard: React.FC = () => {
           onTitleChange={handleTitleChange}
           onToggleSidebar={() => setIsSidebarOpen(true)}
           onResolveConflict={() => setIsConflictDialogOpen(true)}
+          onOpenVersions={handleOpenVersions}
         />
       </div>
 
-      {/* Boards & Folders Drawer */}
+      {/* Boards & Folders Quick Drawer */}
       <BoardDrawer
         isOpen={isSidebarOpen}
         currentBoardId={activeBoard?.id || null}
@@ -469,11 +603,8 @@ export const Whiteboard: React.FC = () => {
         isTrashView={isTrashView}
         onClose={() => setIsSidebarOpen(false)}
         onSelectBoard={(id) => {
-          const target = boards.find((b) => b.id === id);
-          if (target) {
-            loadBoardScene(target);
-            setIsSidebarOpen(false);
-          }
+          setIsSidebarOpen(false);
+          navigate(`/boards/${id}`);
         }}
         onCreateBoard={handleCreateBoard}
         onDeleteBoard={handleDeleteBoard}
@@ -515,8 +646,49 @@ export const Whiteboard: React.FC = () => {
         onClose={() => setIsConflictDialogOpen(false)}
       />
 
-      {/* Floating Centered Toolbar: Strictly Lucide Icons (Zero Emojis) */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1.5 rounded-xl border bg-card/95 backdrop-blur shadow-md text-foreground">
+      {/* Floating Style Inspector Panel when elements are selected (RNF-S02) */}
+      <StyleInspector
+        selectedElements={selectedElements}
+        onUpdateStyle={handleUpdateStyle}
+        onUpdateRouting={handleUpdateRouting}
+        onEditText={(el) => {
+          setEditingElement(el);
+          setEditingTextValue(
+            el.type === 'text' ? (el as any).text || el.label || '' : el.label || ''
+          );
+        }}
+        onToggleLock={handleToggleLock}
+        onDuplicate={handleDuplicateSelected}
+        onGroup={handleGroupSelected}
+        onUngroup={handleUngroupSelected}
+        onBringToFront={handleBringToFront}
+        onSendToBack={handleSendToBack}
+        onDelete={handleDelete}
+      />
+
+      {/* Responsive Floating Centered Toolbar (top-16 on medium viewports so it never collides with BoardHeader) */}
+      <div className="absolute top-16 xl:top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 p-1.5 rounded-xl border bg-card/95 backdrop-blur shadow-md text-foreground max-w-[96vw] overflow-x-auto">
+        {/* Undo / Redo (RF-E08) */}
+        <button
+          title="Undo (Ctrl+Z)"
+          disabled={!canUndo}
+          onClick={() => engineRef.current?.undo()}
+          className="p-2 rounded hover:bg-muted disabled:opacity-35 transition-colors"
+        >
+          <Undo2 className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Redo (Ctrl+Y)"
+          disabled={!canRedo}
+          onClick={() => engineRef.current?.redo()}
+          className="p-2 rounded hover:bg-muted disabled:opacity-35 transition-colors"
+        >
+          <Redo2 className="w-4 h-4" />
+        </button>
+
+        <div className="w-[1px] h-5 bg-border mx-1 shrink-0" />
+
         {/* Navigation Tools */}
         <button
           title="Select / Pointer (V)"
@@ -538,9 +710,9 @@ export const Whiteboard: React.FC = () => {
           <Hand className="w-4 h-4" />
         </button>
 
-        <div className="w-[1px] h-5 bg-border mx-1" />
+        <div className="w-[1px] h-5 bg-border mx-1 shrink-0" />
 
-        {/* 2D Geometric Primitives */}
+        {/* 2D Geometric Primitives & Text / Sticky / Freehand */}
         <button
           title="Rectangle (R)"
           onClick={() => handleToolSelect('rectangle')}
@@ -601,9 +773,49 @@ export const Whiteboard: React.FC = () => {
           <ArrowRight className="w-4 h-4" />
         </button>
 
-        <div className="w-[1px] h-5 bg-border mx-1" />
+        <button
+          title="Text Label (T)"
+          onClick={() => handleToolSelect('text')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'text' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Type className="w-4 h-4" />
+        </button>
 
-        {/* IT Architecture Native Components Library */}
+        <button
+          title="Sticky Note (S)"
+          onClick={() => handleToolSelect('sticky')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'sticky' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <StickyNote className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Freehand Draw (P)"
+          onClick={() => handleToolSelect('freehand')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'freehand' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <PenTool className="w-4 h-4" />
+        </button>
+
+        <button
+          title="Eraser (E)"
+          onClick={() => handleToolSelect('eraser')}
+          className={`p-2 rounded hover:bg-muted transition-colors ${
+            activeTool === 'eraser' ? 'bg-primary text-primary-foreground' : ''
+          }`}
+        >
+          <Eraser className="w-4 h-4" />
+        </button>
+
+        <div className="w-[1px] h-5 bg-border mx-1 shrink-0" />
+
+        {/* Quick IT Architecture Components + Full 20-Component Library Trigger */}
         <button
           title="Database (SQL)"
           onClick={() => handleToolSelect('database')}
@@ -654,43 +866,191 @@ export const Whiteboard: React.FC = () => {
           <Cloud className="w-4 h-4" />
         </button>
 
-        {selectedCount > 0 && (
-          <>
-            <div className="w-[1px] h-5 bg-border mx-1" />
-            <button
-              title="Group Selected (Ctrl+G)"
-              onClick={handleGroupSelected}
-              className="p-2 rounded hover:bg-muted text-foreground transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
-
-            <button
-              title="Bring to Front (Ctrl+])"
-              onClick={handleBringToFront}
-              className="p-2 rounded hover:bg-muted text-foreground transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-
-            <button
-              title="Send to Back (Ctrl+[)"
-              onClick={handleSendToBack}
-              className="p-2 rounded hover:bg-muted text-foreground transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-
-            <button
-              title="Delete Selected (Del)"
-              onClick={handleDelete}
-              className="p-2 rounded text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </>
-        )}
+        <button
+          title="All 20 IT Architecture Components Library"
+          onClick={() => setIsComponentLibraryOpen((prev) => !prev)}
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            isComponentLibraryOpen
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted/60 hover:bg-muted text-foreground'
+          }`}
+        >
+          <Boxes className="w-4 h-4" />
+          <span className="hidden sm:inline">IT Library</span>
+        </button>
       </div>
+
+      {/* 20 P0 IT Architecture Component Library Popover (RF-E03) */}
+      {isComponentLibraryOpen && (
+        <div className="absolute top-28 xl:top-16 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-2xl rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-4 text-foreground animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+            <div className="flex items-center gap-2">
+              <Boxes className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-bold">
+                System Design IT Component Library (20 Native Components)
+              </h3>
+            </div>
+            <button
+              onClick={() => setIsComponentLibraryOpen(false)}
+              className="p-1 rounded hover:bg-muted text-muted-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+            {(Object.keys(CATEGORY_LABELS) as ComponentCategory[]).map((cat) => {
+              const items = Object.values(IT_COMPONENTS).filter((c) => c.category === cat);
+              return (
+                <div key={cat} className="space-y-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {CATEGORY_LABELS[cat]}
+                  </div>
+                  <div className="space-y-1">
+                    {items.map((comp) => (
+                      <button
+                        key={comp.key}
+                        onClick={() => handleToolSelect(comp.key as Tool)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center justify-between ${
+                          activeTool === comp.key
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-muted/30 hover:bg-muted border-transparent'
+                        }`}
+                      >
+                        <span>{comp.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* In-Place Element Text / Label Editor Modal (RF-E04) */}
+      {editingElement && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm"
+          onClick={() => setEditingElement(null)}
+        >
+          <form
+            onSubmit={handleSaveEditedText}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-xl border bg-card p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">
+                Edit Element Text / Label
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingElement(null)}
+                className="p-1 rounded hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <textarea
+              autoFocus
+              rows={3}
+              value={editingTextValue}
+              onChange={(e) => setEditingTextValue(e.target.value)}
+              placeholder="Enter text or label..."
+              className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingElement(null)}
+                className="px-3 py-1.5 rounded-lg border text-xs font-medium hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90"
+              >
+                Apply Text
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Version History & Checkpoints Modal (RF-Q11) */}
+      {isVersionsModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+          onClick={() => setIsVersionsModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-xl border bg-card p-5 shadow-2xl space-y-4 text-foreground"
+          >
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-bold">Version History & Checkpoints</h3>
+              </div>
+              <button
+                onClick={() => setIsVersionsModalOpen(false)}
+                className="p-1 rounded hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateVersion} className="flex gap-2">
+              <input
+                type="text"
+                value={newVersionLabel}
+                onChange={(e) => setNewVersionLabel(e.target.value)}
+                placeholder="Checkpoint label (optional)..."
+                className="flex-1 rounded-lg border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="submit"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Save Checkpoint</span>
+              </button>
+            </form>
+
+            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+              {versions.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">
+                  No version checkpoints saved yet.
+                </p>
+              ) : (
+                versions.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/30 text-xs"
+                  >
+                    <div>
+                      <div className="font-semibold">
+                        {v.label || `Revision #${v.revision}`}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Rev {v.revision} • {new Date(v.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRestoreVersion(v.id)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded border bg-card hover:bg-muted text-xs font-medium transition-colors"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Restore</span>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Left Navigation Controls: Zoom & Viewport */}
       <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 p-1 rounded-lg border bg-card/95 backdrop-blur shadow-md text-foreground text-xs font-medium">
@@ -799,22 +1159,22 @@ export const Whiteboard: React.FC = () => {
 
         {/* Theme Toggle */}
         <button
-          title="Toggle Theme"
+          title="Toggle Dark / Light Mode"
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
           className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors"
         >
           {resolvedTheme === 'dark' ? (
-            <Sun className="w-4 h-4" />
+            <Sun className="w-4 h-4 text-amber-400" />
           ) : (
-            <Moon className="w-4 h-4" />
+            <Moon className="w-4 h-4 text-slate-700" />
           )}
         </button>
       </div>
 
-      {/* Native Imperative Canvas 2D */}
+      {/* Interactive 2D Infinite Canvas */}
       <canvas
         ref={canvasRef}
-        className="w-full h-full block cursor-crosshair active:cursor-grabbing"
+        className="w-full h-full block touch-none cursor-crosshair"
       />
     </div>
   );

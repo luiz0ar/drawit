@@ -6,6 +6,7 @@ export type ElementType =
   | 'line'
   | 'arrow'
   | 'text'
+  | 'sticky'
   | 'freehand'
   | 'component';
 
@@ -39,15 +40,16 @@ export interface BaseElement {
   locked: boolean;
   style: ElementStyle;
   version: number;
+  label?: string;
 }
 
 export interface GeometricElement extends BaseElement {
-  type: 'rectangle' | 'ellipse' | 'diamond' | 'triangle' | 'line';
+  type: 'rectangle' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'sticky';
 }
 
 export interface ArrowElement extends BaseElement {
   type: 'arrow';
-  points: [number, number][]; // relative points
+  points: { x: number; y: number }[];
   startBinding?: { elementId: string; anchor: string };
   endBinding?: { elementId: string; anchor: string };
   startArrowhead?: 'none' | 'arrow' | 'dot';
@@ -89,6 +91,22 @@ export interface BoundingBox {
 }
 
 export function getElementBoundingBox(element: CanvasElement): BoundingBox {
+  if (element.type === 'arrow') {
+    const pts = (element as ArrowElement).points || [];
+    if (pts.length > 0) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return { minX, minY, maxX, maxY };
+    }
+  }
   const minX = Math.min(element.x, element.x + element.width);
   const maxX = Math.max(element.x, element.x + element.width);
   const minY = Math.min(element.y, element.y + element.height);
@@ -96,4 +114,3 @@ export function getElementBoundingBox(element: CanvasElement): BoundingBox {
 
   return { minX, minY, maxX, maxY };
 }
-

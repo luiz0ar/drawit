@@ -5,7 +5,7 @@ use mongodb::{
 };
 
 use crate::{
-    dto::{AuthResponse, LoginRequest, RegisterRequest, UserDto},
+    dto::{AuthResponse, ChangePasswordRequest, LoginRequest, RegisterRequest, UserDto},
     error::{AppError, InvalidParam},
     models::{RefreshToken, User},
     services::{PasswordService, TokenService},
@@ -234,6 +234,68 @@ impl AuthService {
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
+        Ok(())
+    }
+
+    /// RF-A05: Logout all devices by revoking all refresh tokens for the user
+    pub async fn logout_all(&self, user_id: &str) -> Result<(), AppError> {
+        let now = Utc::now();
+        self.tokens_col
+            .update_many(
+                doc! { "user_id": user_id, "revoked_at": null },
+                doc! { "$set": { "revoked_at": BsonDateTime::from_millis(now.timestamp_millis()) } },
+            )
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// RF-A06: Change password and revoke all existing refresh tokens
+    pub async fn change_password(
+        &self,
+        user_id: &str,
+        req: ChangePasswordRequest,
+    ) -> Result<(), AppError> {
+        if req.new_password.len() < 6 {
+            return Err(AppError::Validation(vec![InvalidParam {
+                name: "new_password".to_string(),
+                reason: "New password must have at least 6 characters.".to_string(),
+            }]));
+        }
+
+        let user = self
+            .users_col
+            .find_one(doc! { "_id": user_id })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound("User not found.".to_string()))?;
+
+        let is_valid =
+            PasswordService::verify_password(req.current_password, user.password_hash).await?;
+        if !is_valid {
+            return Err(AppError::Unauthorized(
+                "Current password is incorrect.".to_string(),
+            ));
+        }
+
+        let new_hash = PasswordService::hash_password(req.new_password).await?;
+        let now = Utc::now();
+
+        self.users_col
+            .update_one(
+                doc! { "_id": user_id },
+                doc! {
+                    "$set": {
+                        "password_hash": new_hash,
+                        "updated_at": BsonDateTime::from_millis(now.timestamp_millis()),
+                    }
+                },
+            )
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        self.logout_all(user_id).await?;
         Ok(())
     }
 

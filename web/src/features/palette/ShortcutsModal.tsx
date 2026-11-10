@@ -14,7 +14,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
 
   const sections = [
     {
-      title: 'Tools & Selection',
+      title: 'Tools & Creation',
       shortcuts: [
         { key: 'V', desc: 'Select / Pointer tool' },
         { key: 'H', desc: 'Hand / Pan canvas tool' },
@@ -23,6 +23,10 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
         { key: 'O', desc: 'Ellipse / Circle shape' },
         { key: 'D', desc: 'Diamond / Decision shape' },
         { key: 'A', desc: 'Magnetic Arrow connector' },
+        { key: 'T', desc: 'Text label node' },
+        { key: 'S', desc: 'Sticky note' },
+        { key: 'P', desc: 'Freehand pencil tool' },
+        { key: 'E', desc: 'Eraser tool' },
       ],
     },
     {
@@ -30,12 +34,16 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
       shortcuts: [
         { key: 'Mouse Wheel', desc: 'Zoom centered at mouse cursor (10% to 800%)' },
         { key: 'Middle Click + Drag', desc: 'Pan canvas' },
-        { key: 'Click % in bottom bar', desc: 'Reset zoom to 100%' },
+        { key: 'Double-Click Element', desc: 'Edit element text / label in-place' },
       ],
     },
     {
-      title: 'Editing & Arrangement',
+      title: 'Editing, History & Arrangement',
       shortcuts: [
+        { key: 'Ctrl + Z', desc: 'Undo last action (50-level stack)' },
+        { key: 'Ctrl + Y / Ctrl + Shift + Z', desc: 'Redo action' },
+        { key: 'Ctrl + C', desc: 'Copy selected elements' },
+        { key: 'Ctrl + V', desc: 'Paste elements (+20px offset)' },
         { key: 'Del / Backspace', desc: 'Delete selected elements (detaches connected arrows)' },
         { key: 'Ctrl + G', desc: 'Group selected elements' },
         { key: 'Ctrl + Shift + G', desc: 'Ungroup selected elements' },
@@ -46,7 +54,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
     {
       title: 'System & Productivity',
       shortcuts: [
-        { key: 'Ctrl + K', desc: 'Open Command Palette' },
+        { key: 'Ctrl + K', desc: 'Open Command Palette (20 IT components + tools)' },
         { key: '?', desc: 'Open Keyboard Shortcuts cheat sheet' },
         { key: 'Esc', desc: 'Close dialogs / Cancel action' },
       ],
@@ -103,4 +111,3 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
     </div>
   );
 };
-

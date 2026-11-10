@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { openDB, IDBPDatabase } from 'idb';
 import { BoardApi, ApiError } from '../../lib/api';
 import { CanvasElement } from '../../canvas/engine/types';
 import { ViewportTransform } from '../../canvas/engine/coordinates';
@@ -10,6 +11,65 @@ interface UseAutosaveProps {
   initialRevision: number;
   onConflict?: (serverRevision: number) => void;
   debounceMs?: number;
+}
+
+interface WalEntry {
+  boardId: string;
+  revision: number;
+  contentHash: string;
+  elements: CanvasElement[];
+  viewport: ViewportTransform;
+  updatedAt: number;
+}
+
+let dbPromise: Promise<IDBPDatabase> | null = null;
+
+function getWalDb(): Promise<IDBPDatabase> | null {
+  if (typeof indexedDB === 'undefined') return null;
+  if (!dbPromise) {
+    dbPromise = openDB('drawit_wal', 1, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('pending_scenes')) {
+          db.createObjectStore('pending_scenes', { keyPath: 'boardId' });
+        }
+      },
+    });
+  }
+  return dbPromise;
+}
+
+export async function writeWalEntry(entry: WalEntry): Promise<void> {
+  try {
+    const db = await getWalDb();
+    if (db) {
+      await db.put('pending_scenes', entry);
+    }
+  } catch {
+    // Ignore IndexedDB quota or private browsing errors
+  }
+}
+
+export async function clearWalEntry(boardId: string): Promise<void> {
+  try {
+    const db = await getWalDb();
+    if (db) {
+      await db.delete('pending_scenes', boardId);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+export async function readWalEntry(boardId: string): Promise<WalEntry | undefined> {
+  try {
+    const db = await getWalDb();
+    if (db) {
+      return await db.get('pending_scenes', boardId);
+    }
+  } catch {
+    // Ignore
+  }
+  return undefined;
 }
 
 export function computeContentHash(elements: CanvasElement[], viewport: ViewportTransform): string {
@@ -34,36 +94,52 @@ export function useAutosave({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [conflictServerRevision, setConflictServerRevision] = useState<number | null>(null);
 
+  const statusRef = useRef<SaveStatus>('saved');
+  const onConflictRef = useRef(onConflict);
+  onConflictRef.current = onConflict;
+
   const currentRevisionRef = useRef<number>(initialRevision);
   const lastSavedHashRef = useRef<string>('');
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPayloadRef = useRef<{
     elements: CanvasElement[];
     viewport: ViewportTransform;
+    thumbnail?: string | null;
   } | null>(null);
+
+  const updateStatus = useCallback((next: SaveStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
 
   // Sync ref with initialRevision when boardId or initialRevision changes
   useEffect(() => {
     currentRevisionRef.current = initialRevision;
     setLastSavedRevision(initialRevision);
-    setStatus('saved');
+    updateStatus('saved');
     setErrorMessage(null);
     setConflictServerRevision(null);
-  }, [boardId, initialRevision]);
+  }, [boardId, initialRevision, updateStatus]);
 
   const saveImmediate = useCallback(
-    async (elements: CanvasElement[], viewport: ViewportTransform, forceRevision?: number) => {
-      if (!boardId) return;
+    async (
+      elements: CanvasElement[],
+      viewport: ViewportTransform,
+      forceRevision?: number,
+      thumbnail?: string | null
+    ) => {
+      if (!boardId || boardId.startsWith('local-')) return;
 
       const hash = computeContentHash(elements, viewport);
-      if (hash === lastSavedHashRef.current && status === 'saved') {
+      if (hash === lastSavedHashRef.current && statusRef.current === 'saved' && forceRevision === undefined) {
         return;
       }
 
-      setStatus('saving');
+      updateStatus('saving');
       setErrorMessage(null);
 
-      const targetRevision = forceRevision !== undefined ? forceRevision : currentRevisionRef.current;
+      const targetRevision =
+        forceRevision !== undefined ? forceRevision : currentRevisionRef.current;
 
       try {
         const res = await BoardApi.saveScene(boardId, {
@@ -76,37 +152,50 @@ export function useAutosave({
             pan_y: viewport.panY,
             zoom: viewport.zoom,
           },
+          thumbnail: thumbnail ?? undefined,
         });
 
         currentRevisionRef.current = res.revision;
         setLastSavedRevision(res.revision);
         lastSavedHashRef.current = hash;
-        setStatus('saved');
+        pendingPayloadRef.current = null;
+        updateStatus('saved');
         setConflictServerRevision(null);
+        await clearWalEntry(boardId);
       } catch (err) {
         if (err instanceof ApiError && err.problem.status === 409) {
           const sRev = err.problem.serverRevision || targetRevision + 1;
           setConflictServerRevision(sRev);
-          setStatus('conflict');
-          onConflict?.(sRev);
+          updateStatus('conflict');
+          onConflictRef.current?.(sRev);
         } else {
-          setStatus('error');
+          updateStatus('error');
           setErrorMessage(err instanceof Error ? err.message : 'Failed to save changes');
         }
       }
     },
-    [boardId, status, onConflict]
+    [boardId, updateStatus]
   );
 
   const scheduleSave = useCallback(
-    (elements: CanvasElement[], viewport: ViewportTransform) => {
-      if (!boardId) return;
+    (elements: CanvasElement[], viewport: ViewportTransform, thumbnail?: string | null) => {
+      if (!boardId || boardId.startsWith('local-')) return;
 
       const hash = computeContentHash(elements, viewport);
       if (hash === lastSavedHashRef.current) return;
 
-      pendingPayloadRef.current = { elements, viewport };
-      setStatus('idle');
+      pendingPayloadRef.current = { elements, viewport, thumbnail };
+      updateStatus('idle');
+
+      // Immediately write to IndexedDB WAL for zero data loss
+      void writeWalEntry({
+        boardId,
+        revision: currentRevisionRef.current,
+        contentHash: hash,
+        elements,
+        viewport,
+        updatedAt: Date.now(),
+      });
 
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -114,14 +203,16 @@ export function useAutosave({
 
       timeoutRef.current = setTimeout(() => {
         if (pendingPayloadRef.current) {
-          saveImmediate(
+          void saveImmediate(
             pendingPayloadRef.current.elements,
-            pendingPayloadRef.current.viewport
+            pendingPayloadRef.current.viewport,
+            undefined,
+            pendingPayloadRef.current.thumbnail
           );
         }
       }, debounceMs);
     },
-    [boardId, debounceMs, saveImmediate]
+    [boardId, debounceMs, saveImmediate, updateStatus]
   );
 
   // Overwrite conflict by adopting server revision and saving current elements
@@ -135,6 +226,24 @@ export function useAutosave({
     [conflictServerRevision, saveImmediate]
   );
 
+  // Flush or warn on beforeunload if changes are unsaved
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingPayloadRef.current && boardId && !boardId.startsWith('local-')) {
+        void saveImmediate(
+          pendingPayloadRef.current.elements,
+          pendingPayloadRef.current.viewport,
+          undefined,
+          pendingPayloadRef.current.thumbnail
+        );
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [boardId, saveImmediate]);
+
   // Clear timeout on unmount
   useEffect(() => {
     return () => {
@@ -142,6 +251,10 @@ export function useAutosave({
         clearTimeout(timeoutRef.current);
       }
     };
+  }, []);
+
+  const setSavedHash = useCallback((hash: string) => {
+    lastSavedHashRef.current = hash;
   }, []);
 
   return {
@@ -152,8 +265,6 @@ export function useAutosave({
     scheduleSave,
     saveImmediate,
     resolveConflictByOverwrite,
-    setSavedHash: (hash: string) => {
-      lastSavedHashRef.current = hash;
-    },
+    setSavedHash,
   };
 }

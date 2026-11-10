@@ -1,14 +1,14 @@
 use axum::{
-    extract::State,
+    extract::{Extension, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
 
 use crate::{
-    dto::{LoginRequest, RegisterRequest},
+    dto::{ChangePasswordRequest, LoginRequest, RegisterRequest},
     error::AppError,
-    services::AuthService,
+    services::{AuthService, Claims},
     AppState,
 };
 
@@ -123,5 +123,36 @@ pub async fn logout(
         StatusCode::OK,
         [(header::SET_COOKIE, cookie_header)],
         Json(serde_json::json!({ "message": "Logged out successfully." })),
+    ))
+}
+
+pub async fn logout_all(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_service = AuthService::new(&state.db, &state.config);
+    auth_service.logout_all(&claims.sub).await?;
+
+    let cookie_header = build_clear_refresh_cookie();
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie_header)],
+        Json(serde_json::json!({ "message": "All sessions logged out successfully." })),
+    ))
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_service = AuthService::new(&state.db, &state.config);
+    auth_service.change_password(&claims.sub, req).await?;
+
+    let cookie_header = build_clear_refresh_cookie();
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie_header)],
+        Json(serde_json::json!({ "message": "Password updated successfully." })),
     ))
 }

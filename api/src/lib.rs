@@ -57,14 +57,37 @@ pub fn create_router(state: AppState) -> Router {
     // Protected routes requiring valid Bearer JWT
     let protected_routes = Router::new()
         .route("/auth/me", get(routes::users::me))
+        .route("/auth/logout-all", post(routes::auth::logout_all))
+        .route("/auth/password", patch(routes::auth::change_password))
+        .route(
+            "/users/me/preferences",
+            patch(routes::users::update_preferences),
+        )
         .route("/boards", get(routes::boards::list_boards))
         .route("/boards", post(routes::boards::create_board))
         .route("/boards/:id", get(routes::boards::get_board))
         .route("/boards/:id", patch(routes::boards::update_board))
         .route("/boards/:id", delete(routes::boards::delete_board))
+        .route(
+            "/boards/:id/permanent",
+            delete(routes::boards::permanent_delete_board),
+        )
         .route("/boards/:id/restore", post(routes::boards::restore_board))
+        .route(
+            "/boards/:id/duplicate",
+            post(routes::boards::duplicate_board),
+        )
         .route("/boards/:id/scene", get(routes::boards::get_scene))
         .route("/boards/:id/scene", put(routes::boards::save_scene))
+        .route("/boards/:id/versions", get(routes::boards::list_versions))
+        .route("/boards/:id/versions", post(routes::boards::create_version))
+        .route(
+            "/boards/:id/versions/:version_id/restore",
+            post(routes::boards::restore_version),
+        )
+        .route("/trash/empty", post(routes::boards::empty_trash))
+        .route("/trash", delete(routes::boards::empty_trash))
+        .route("/tags", get(routes::boards::list_tags))
         .route("/groups", get(routes::groups::list_groups))
         .route("/groups", post(routes::groups::create_group))
         .route("/groups/:id", patch(routes::groups::update_group))
@@ -75,6 +98,7 @@ pub fn create_router(state: AppState) -> Router {
     let public_routes = Router::new()
         .route("/health", get(routes::health::health))
         .route("/ready", get(routes::health::ready))
+        .route("/components", get(routes::boards::list_components))
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/login", post(routes::auth::login))
         .route("/auth/refresh", post(routes::auth::refresh))
