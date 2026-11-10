@@ -9,7 +9,6 @@ import {
   Edit2,
   Folder,
   LayoutGrid,
-  History,
 } from 'lucide-react';
 import { SaveStatus } from '../editor/useAutosave';
 import { validateBoardTitle } from './titleGenerator';
@@ -34,7 +33,6 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
   onTitleChange,
   onToggleSidebar,
   onResolveConflict,
-  onOpenVersions,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentTitle, setCurrentTitle] = useState(title);
@@ -79,7 +77,6 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
         className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors flex items-center gap-1.5 text-xs font-medium"
       >
         <LayoutGrid className="w-4 h-4 text-primary" />
-        <span className="hidden md:inline">Dashboard</span>
       </button>
 
       {/* Sidebar toggle */}
@@ -175,19 +172,6 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
             </span>
           )}
         </div>
-
-        {onOpenVersions && (
-          <>
-            <div className="w-[1px] h-4 bg-border mx-1" />
-            <button
-              onClick={onOpenVersions}
-              title="Version History & Checkpoints"
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <History className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
       </div>
     </div>
   );

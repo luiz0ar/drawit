@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { hitTestElement, hitTestSelectionHandle } from '../hitTest';
+import {
+  hitTestElement,
+  hitTestSelectionHandle,
+  elementIntersectsMarquee,
+} from '../hitTest';
 import { IT_COMPONENTS } from '../components';
 import { CanvasElement } from '../types';
 
@@ -69,6 +73,39 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
 
     expect(hitTestElement({ x: 150, y: 180 }, triangle)).toBe(true);
     expect(hitTestElement({ x: 110, y: 110 }, triangle)).toBe(false);
+  });
+
+  it('correctly tests area marquee intersection', () => {
+    // baseElement is at x: 100, y: 100, width: 200, height: 100 (bounding box [100, 100] to [300, 200])
+    // Marquee enclosing it
+    expect(
+      elementIntersectsMarquee(baseElement, {
+        minX: 50,
+        minY: 50,
+        maxX: 350,
+        maxY: 250,
+      })
+    ).toBe(true);
+
+    // Marquee partially overlapping
+    expect(
+      elementIntersectsMarquee(baseElement, {
+        minX: 250,
+        minY: 150,
+        maxX: 400,
+        maxY: 300,
+      })
+    ).toBe(true);
+
+    // Marquee completely outside
+    expect(
+      elementIntersectsMarquee(baseElement, {
+        minX: 400,
+        minY: 400,
+        maxX: 500,
+        maxY: 500,
+      })
+    ).toBe(false);
   });
 
   it('detects 8 resize handles and rotation handle in screen space', () => {

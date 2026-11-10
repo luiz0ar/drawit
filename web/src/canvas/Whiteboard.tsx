@@ -8,11 +8,6 @@ import {
   Triangle,
   Minus,
   ArrowRight,
-  Database,
-  Server,
-  Globe,
-  Layers,
-  Cloud,
   ZoomIn,
   ZoomOut,
   Maximize2,
@@ -29,16 +24,13 @@ import {
   Eraser,
   Boxes,
   X,
-  History,
-  Plus,
-  RotateCcw,
 } from 'lucide-react';
 import { CanvasEngine, Tool } from './engine/CanvasEngine';
 import { CanvasElement, ElementStyle } from './engine/types';
 import { ViewportTransform, clampZoom } from './engine/coordinates';
 import { IT_COMPONENTS, ComponentCategory } from './engine/components';
 import { useTheme } from '../context/ThemeContext';
-import { Board, Group, BoardVersion, BoardApi, GroupApi } from '../lib/api';
+import { Board, Group, BoardApi, GroupApi } from '../lib/api';
 import { navigate } from '../lib/router';
 import { useAutosave, computeContentHash } from '../features/editor/useAutosave';
 import { BoardHeader } from '../features/boards/BoardHeader';
@@ -97,11 +89,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
   // In-place Text / Label Editor State (RF-E04)
   const [editingElement, setEditingElement] = useState<CanvasElement | null>(null);
   const [editingTextValue, setEditingTextValue] = useState('');
-
-  // Version History State (RF-Q11)
-  const [isVersionsModalOpen, setIsVersionsModalOpen] = useState(false);
-  const [versions, setVersions] = useState<BoardVersion[]>([]);
-  const [newVersionLabel, setNewVersionLabel] = useState('');
 
   // Boards & Groups State
   const [boards, setBoards] = useState<Board[]>([]);
@@ -165,10 +152,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
           const els = scene.elements || [];
           const vp = scene.viewport
             ? {
-                panX: scene.viewport.pan_x,
-                panY: scene.viewport.pan_y,
-                zoom: scene.viewport.zoom || 1.0,
-              }
+              panX: scene.viewport.pan_x,
+              panY: scene.viewport.pan_y,
+              zoom: scene.viewport.zoom || 1.0,
+            }
             : { panX: 0, panY: 0, zoom: 1.0 };
           engineRef.current.setElements(els, true);
           engineRef.current.setViewport(vp);
@@ -379,44 +366,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
     setEditingElement(null);
   };
 
-  // Version History actions (RF-Q11)
-  const handleOpenVersions = async () => {
-    if (!activeBoard || activeBoard.id.startsWith('local-')) return;
-    setIsVersionsModalOpen(true);
-    try {
-      const list = await BoardApi.listVersions(activeBoard.id);
-      setVersions(list);
-    } catch {
-      setVersions([]);
-    }
-  };
-
-  const handleCreateVersion = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeBoard) return;
-    try {
-      const created = await BoardApi.createVersion(
-        activeBoard.id,
-        newVersionLabel.trim() || undefined
-      );
-      setVersions((prev) => [created, ...prev]);
-      setNewVersionLabel('');
-    } catch (err) {
-      console.error('Failed to create version checkpoint:', err);
-    }
-  };
-
-  const handleRestoreVersion = async (versionId: string) => {
-    if (!activeBoard) return;
-    try {
-      await BoardApi.restoreVersion(activeBoard.id, versionId);
-      await loadBoardScene(activeBoard);
-      setIsVersionsModalOpen(false);
-    } catch (err) {
-      console.error('Failed to restore version:', err);
-    }
-  };
-
   // Export & Import actions
   const boardTitle = activeBoard?.title || 'Quadro-1';
   const bgColor = resolvedTheme === 'dark' ? '#090d16' : '#ffffff';
@@ -567,8 +516,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
     setIsConflictDialogOpen(false);
   };
 
-  const currentGroupName = groups.find((g) => g.id === activeBoard?.group_id)?.name;
-
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background select-none">
       {/* Hidden file input for .drawit JSON Import */}
@@ -584,13 +531,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
       <div className="absolute top-4 left-4 z-20">
         <BoardHeader
           title={boardTitle}
-          groupName={currentGroupName}
           saveStatus={saveStatus}
           isTrashView={isTrashView}
           onTitleChange={handleTitleChange}
           onToggleSidebar={() => setIsSidebarOpen(true)}
           onResolveConflict={() => setIsConflictDialogOpen(true)}
-          onOpenVersions={handleOpenVersions}
         />
       </div>
 
@@ -693,9 +638,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Select / Pointer (V)"
           onClick={() => handleToolSelect('select')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'select' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'select' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <MousePointer2 className="w-4 h-4" />
         </button>
@@ -703,9 +647,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Hand / Pan (H or Space+Drag)"
           onClick={() => handleToolSelect('hand')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'hand' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'hand' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Hand className="w-4 h-4" />
         </button>
@@ -716,9 +659,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Rectangle (R)"
           onClick={() => handleToolSelect('rectangle')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'rectangle' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'rectangle' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Square className="w-4 h-4" />
         </button>
@@ -726,9 +668,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Ellipse / Circle (O)"
           onClick={() => handleToolSelect('ellipse')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'ellipse' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'ellipse' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Circle className="w-4 h-4" />
         </button>
@@ -736,9 +677,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Diamond / Decision (D)"
           onClick={() => handleToolSelect('diamond')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'diamond' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'diamond' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Diamond className="w-4 h-4" />
         </button>
@@ -746,9 +686,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Triangle"
           onClick={() => handleToolSelect('triangle')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'triangle' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'triangle' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Triangle className="w-4 h-4" />
         </button>
@@ -756,9 +695,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Line"
           onClick={() => handleToolSelect('line')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'line' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'line' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Minus className="w-4 h-4" />
         </button>
@@ -766,9 +704,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Magnetic Arrow Connector (A)"
           onClick={() => handleToolSelect('arrow')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'arrow' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'arrow' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <ArrowRight className="w-4 h-4" />
         </button>
@@ -776,9 +713,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Text Label (T)"
           onClick={() => handleToolSelect('text')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'text' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'text' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Type className="w-4 h-4" />
         </button>
@@ -786,9 +722,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Sticky Note (S)"
           onClick={() => handleToolSelect('sticky')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'sticky' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'sticky' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <StickyNote className="w-4 h-4" />
         </button>
@@ -796,9 +731,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Freehand Draw (P)"
           onClick={() => handleToolSelect('freehand')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'freehand' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'freehand' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <PenTool className="w-4 h-4" />
         </button>
@@ -806,77 +740,23 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         <button
           title="Eraser (E)"
           onClick={() => handleToolSelect('eraser')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'eraser' ? 'bg-primary text-primary-foreground' : ''
-          }`}
+          className={`p-2 rounded hover:bg-muted transition-colors ${activeTool === 'eraser' ? 'bg-primary text-primary-foreground' : ''
+            }`}
         >
           <Eraser className="w-4 h-4" />
         </button>
 
         <div className="w-[1px] h-5 bg-border mx-1 shrink-0" />
-
-        {/* Quick IT Architecture Components + Full 20-Component Library Trigger */}
-        <button
-          title="Database (SQL)"
-          onClick={() => handleToolSelect('database')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'database' ? 'bg-primary text-primary-foreground' : ''
-          }`}
-        >
-          <Database className="w-4 h-4" />
-        </button>
-
-        <button
-          title="Server / Service"
-          onClick={() => handleToolSelect('server')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'server' ? 'bg-primary text-primary-foreground' : ''
-          }`}
-        >
-          <Server className="w-4 h-4" />
-        </button>
-
-        <button
-          title="Web Client / Browser"
-          onClick={() => handleToolSelect('browser')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'browser' ? 'bg-primary text-primary-foreground' : ''
-          }`}
-        >
-          <Globe className="w-4 h-4" />
-        </button>
-
-        <button
-          title="Message Queue"
-          onClick={() => handleToolSelect('queue')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'queue' ? 'bg-primary text-primary-foreground' : ''
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-        </button>
-
-        <button
-          title="Cloud"
-          onClick={() => handleToolSelect('cloud')}
-          className={`p-2 rounded hover:bg-muted transition-colors ${
-            activeTool === 'cloud' ? 'bg-primary text-primary-foreground' : ''
-          }`}
-        >
-          <Cloud className="w-4 h-4" />
-        </button>
-
         <button
           title="All 20 IT Architecture Components Library"
           onClick={() => setIsComponentLibraryOpen((prev) => !prev)}
-          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-            isComponentLibraryOpen
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted/60 hover:bg-muted text-foreground'
-          }`}
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isComponentLibraryOpen
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-muted/60 hover:bg-muted text-foreground'
+            }`}
         >
           <Boxes className="w-4 h-4" />
-          <span className="hidden sm:inline">IT Library</span>
+          <span className="hidden sm:inline">Library</span>
         </button>
       </div>
 
@@ -887,7 +767,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
             <div className="flex items-center gap-2">
               <Boxes className="w-4 h-4 text-primary" />
               <h3 className="text-sm font-bold">
-                System Design IT Component Library (20 Native Components)
+                System Design IT Component Library
               </h3>
             </div>
             <button
@@ -911,11 +791,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                       <button
                         key={comp.key}
                         onClick={() => handleToolSelect(comp.key as Tool)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center justify-between ${
-                          activeTool === comp.key
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-muted/30 hover:bg-muted border-transparent'
-                        }`}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center justify-between ${activeTool === comp.key
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-muted/30 hover:bg-muted border-transparent'
+                          }`}
                       >
                         <span>{comp.name}</span>
                       </button>
@@ -975,80 +854,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
               </button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* Version History & Checkpoints Modal (RF-Q11) */}
-      {isVersionsModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
-          onClick={() => setIsVersionsModalOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-xl border bg-card p-5 shadow-2xl space-y-4 text-foreground"
-          >
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-bold">Version History & Checkpoints</h3>
-              </div>
-              <button
-                onClick={() => setIsVersionsModalOpen(false)}
-                className="p-1 rounded hover:bg-muted text-muted-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateVersion} className="flex gap-2">
-              <input
-                type="text"
-                value={newVersionLabel}
-                onChange={(e) => setNewVersionLabel(e.target.value)}
-                placeholder="Checkpoint label (optional)..."
-                className="flex-1 rounded-lg border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button
-                type="submit"
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Save Checkpoint</span>
-              </button>
-            </form>
-
-            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-              {versions.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-6">
-                  No version checkpoints saved yet.
-                </p>
-              ) : (
-                versions.map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/30 text-xs"
-                  >
-                    <div>
-                      <div className="font-semibold">
-                        {v.label || `Revision #${v.revision}`}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        Rev {v.revision} • {new Date(v.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleRestoreVersion(v.id)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded border bg-card hover:bg-muted text-xs font-medium transition-colors"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Restore</span>
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       )}
 

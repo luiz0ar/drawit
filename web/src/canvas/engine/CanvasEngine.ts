@@ -7,7 +7,12 @@ import {
   zoomAtPoint,
   normalizeWheelDelta,
 } from './coordinates';
-import { hitTestElement, hitTestSelectionHandle, ResizeHandle } from './hitTest';
+import {
+  hitTestElement,
+  hitTestSelectionHandle,
+  elementIntersectsMarquee,
+  ResizeHandle,
+} from './hitTest';
 import { CanvasRenderer } from './renderer';
 import { findClosestAnchor, computeAnchorWorldPosition, AnchorPosition } from './anchors';
 import { IT_COMPONENTS } from './components';
@@ -63,6 +68,8 @@ export class CanvasEngine {
   private isDraggingElement = false;
   private isCreatingElement = false;
   private isResizingElement = false;
+  private isMarqueeSelecting = false;
+  private marqueeBox: { startX: number; startY: number; currentX: number; currentY: number } | null = null;
   private activeResizeHandle: ResizeHandle | null = null;
   private resizeInitialElement: CanvasElement | null = null;
   private isSpacePressed = false;
@@ -515,6 +522,11 @@ export class CanvasEngine {
       width,
       height
     );
+
+    // 6. Area Selection Marquee Rectangle
+    if (this.isMarqueeSelecting && this.marqueeBox) {
+      this.renderer.renderMarquee(this.marqueeBox, this.viewport);
+    }
   }
 
   private setupEventListeners() {
@@ -667,6 +679,14 @@ export class CanvasEngine {
         if (!e.shiftKey) {
           this.selectedIds.clear();
         }
+        // Start marquee area selection on empty canvas
+        this.isMarqueeSelecting = true;
+        this.marqueeBox = {
+          startX: this.startWorldPoint.x,
+          startY: this.startWorldPoint.y,
+          currentX: this.startWorldPoint.x,
+          currentY: this.startWorldPoint.y,
+        };
       }
 
       this.isDirty = true;
@@ -941,6 +961,31 @@ export class CanvasEngine {
       return;
     }
 
+    // Marquee area selection
+    if (this.isMarqueeSelecting && this.marqueeBox) {
+      this.marqueeBox.currentX = currentWorld.x;
+      this.marqueeBox.currentY = currentWorld.y;
+
+      const minX = Math.min(this.marqueeBox.startX, this.marqueeBox.currentX);
+      const maxX = Math.max(this.marqueeBox.startX, this.marqueeBox.currentX);
+      const minY = Math.min(this.marqueeBox.startY, this.marqueeBox.currentY);
+      const maxY = Math.max(this.marqueeBox.startY, this.marqueeBox.currentY);
+
+      if (!e.shiftKey) {
+        this.selectedIds.clear();
+      }
+
+      for (const el of this.elements) {
+        if (elementIntersectsMarquee(el, { minX, minY, maxX, maxY })) {
+          this.selectedIds.add(el.id);
+        }
+      }
+
+      this.isDirty = true;
+      this.notifySelectionChange();
+      return;
+    }
+
     // Interactive 8-handle Resize & Rotation (RF-E09)
     if (this.isResizingElement && this.resizeInitialElement && this.activeResizeHandle) {
       const el = this.elements.find((item) => item.id === this.resizeInitialElement!.id);
@@ -1112,6 +1157,13 @@ export class CanvasEngine {
     this.isPanning = false;
     this.hoveredAnchor = null;
     this.alignmentGuides = [];
+
+    if (this.isMarqueeSelecting) {
+      this.isMarqueeSelecting = false;
+      this.marqueeBox = null;
+      this.isDirty = true;
+      this.notifySelectionChange();
+    }
 
     if (this.isResizingElement) {
       this.isResizingElement = false;

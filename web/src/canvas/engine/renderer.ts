@@ -566,4 +566,34 @@ export class CanvasRenderer {
     }
     ctx.restore();
   }
+
+  /**
+   * Renders the area selection marquee rectangle in screen space.
+   */
+  public renderMarquee(
+    marquee: { startX: number; startY: number; currentX: number; currentY: number },
+    viewport: ViewportTransform
+  ) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const p1 = worldToScreen({ x: marquee.startX, y: marquee.startY }, viewport);
+    const p2 = worldToScreen({ x: marquee.currentX, y: marquee.currentY }, viewport);
+
+    const minX = Math.min(p1.x, p2.x);
+    const minY = Math.min(p1.y, p2.y);
+    const width = Math.abs(p2.x - p1.x);
+    const height = Math.abs(p2.y - p1.y);
+
+    ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+
+    ctx.fillRect(minX, minY, width, height);
+    ctx.strokeRect(minX, minY, width, height);
+
+    ctx.restore();
+  }
 }

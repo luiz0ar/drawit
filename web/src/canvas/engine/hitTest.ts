@@ -85,6 +85,59 @@ function hitTestRectangle(localPoint: WorldPoint, element: CanvasElement, thresh
 }
 
 /**
+ * Checks if an element intersects with a world-space selection marquee box.
+ */
+export function elementIntersectsMarquee(
+  element: CanvasElement,
+  marquee: { minX: number; minY: number; maxX: number; maxY: number }
+): boolean {
+  if (element.type === 'arrow') {
+    const pts: { x: number; y: number }[] = (element as any).points || [];
+    if (pts.length === 0) return false;
+    // Check if any point is inside
+    for (const p of pts) {
+      if (
+        p.x >= marquee.minX &&
+        p.x <= marquee.maxX &&
+        p.y >= marquee.minY &&
+        p.y <= marquee.maxY
+      ) {
+        return true;
+      }
+    }
+    // Check bounding box intersection
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    return !(
+      maxX < marquee.minX ||
+      minX > marquee.maxX ||
+      maxY < marquee.minY ||
+      minY > marquee.maxY
+    );
+  }
+
+  const left = Math.min(element.x, element.x + element.width);
+  const right = Math.max(element.x, element.x + element.width);
+  const top = Math.min(element.y, element.y + element.height);
+  const bottom = Math.max(element.y, element.y + element.height);
+
+  return !(
+    right < marquee.minX ||
+    left > marquee.maxX ||
+    bottom < marquee.minY ||
+    top > marquee.maxY
+  );
+}
+
+/**
  * Checks if a point hits an ellipse.
  */
 function hitTestEllipse(localPoint: WorldPoint, element: CanvasElement, threshold = 6): boolean {
