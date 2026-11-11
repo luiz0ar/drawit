@@ -1,5 +1,6 @@
 pub mod config;
 pub mod db;
+pub mod docs;
 pub mod dto;
 pub mod error;
 pub mod middleware;
@@ -101,7 +102,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/groups", post(routes::groups::create_group))
         .route("/groups/:id", patch(routes::groups::update_group))
         .route("/groups/:id", delete(routes::groups::delete_group))
-        .layer(from_fn_with_state(state.clone(), middleware::require_auth));
+        .route_layer(from_fn_with_state(state.clone(), middleware::require_auth));
 
     // Public routes
     let public_routes = Router::new()
@@ -118,10 +119,15 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout));
 
-    Router::new()
-        .merge(public_routes)
-        .merge(protected_routes)
-        .layer(TraceLayer::new_for_http())
+    let mut app = Router::new().merge(public_routes).merge(protected_routes);
+
+    if state.config.env == "development" {
+        use utoipa::OpenApi;
+        use utoipa_scalar::{Scalar, Servable};
+        app = app.merge(Scalar::with_url("/scalar", docs::ApiDoc::openapi()));
+    }
+
+    app.layer(TraceLayer::new_for_http())
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024))
         .with_state(state)

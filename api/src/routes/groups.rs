@@ -18,6 +18,18 @@ pub struct DeleteGroupQuery {
     pub boards: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/groups",
+    responses(
+        (status = 200, description = "List all user groups", body = Vec<GroupDto>),
+        (status = 401, description = "Unauthorized", body = ProblemDetails)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Groups"
+)]
 pub async fn list_groups(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -27,6 +39,21 @@ pub async fn list_groups(
     Ok(Json(groups))
 }
 
+#[utoipa::path(
+    post,
+    path = "/groups",
+    request_body = CreateGroupRequest,
+    responses(
+        (status = 201, description = "Group created", body = GroupDto),
+        (status = 400, description = "Bad Request", body = ProblemDetails),
+        (status = 401, description = "Unauthorized", body = ProblemDetails),
+        (status = 422, description = "Validation error", body = ProblemDetails)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Groups"
+)]
 pub async fn create_group(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -37,6 +64,24 @@ pub async fn create_group(
     Ok((StatusCode::CREATED, Json(group)))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/groups/{id}",
+    params(
+        ("id" = String, Path, description = "Group ID")
+    ),
+    request_body = UpdateGroupRequest,
+    responses(
+        (status = 200, description = "Group updated", body = GroupDto),
+        (status = 401, description = "Unauthorized", body = ProblemDetails),
+        (status = 404, description = "Group not found", body = ProblemDetails),
+        (status = 422, description = "Validation error", body = ProblemDetails)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Groups"
+)]
 pub async fn update_group(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -48,6 +93,23 @@ pub async fn update_group(
     Ok(Json(group))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/groups/{id}",
+    params(
+        ("id" = String, Path, description = "Group ID"),
+        ("boards" = Option<String>, Query, description = "Behavior for boards in group: 'move' (default, remove group tag) or 'trash'")
+    ),
+    responses(
+        (status = 204, description = "Group deleted successfully"),
+        (status = 401, description = "Unauthorized", body = ProblemDetails),
+        (status = 404, description = "Group not found", body = ProblemDetails)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Groups"
+)]
 pub async fn delete_group(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,

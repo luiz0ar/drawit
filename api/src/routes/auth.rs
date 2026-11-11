@@ -43,6 +43,18 @@ fn build_clear_refresh_cookie() -> String {
     "refresh_token=; HttpOnly; SameSite=Lax; Path=/auth; Max-Age=0".to_string()
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/register",
+    request_body = RegisterRequest,
+    responses(
+        (status = 202, description = "User registration accepted; verification email sent", body = RegisterResponse),
+        (status = 400, description = "Bad Request - invalid fields", body = ProblemDetails),
+        (status = 409, description = "Conflict - email or username already taken", body = ProblemDetails),
+        (status = 422, description = "Unprocessable Entity - validation error", body = ProblemDetails)
+    ),
+    tag = "Auth"
+)]
 pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
@@ -54,6 +66,17 @@ pub async fn register(
     Ok((StatusCode::ACCEPTED, Json(response)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful; access token returned and refresh token set in HTTP-only cookie", body = AuthResponse),
+        (status = 400, description = "Bad Request - invalid credentials format", body = ProblemDetails),
+        (status = 401, description = "Unauthorized - invalid credentials or unverified email", body = ProblemDetails)
+    ),
+    tag = "Auth"
+)]
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -88,6 +111,16 @@ pub async fn login(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/verify-email",
+    request_body = VerifyEmailRequest,
+    responses(
+        (status = 200, description = "Email verified successfully"),
+        (status = 400, description = "Invalid or expired verification token", body = ProblemDetails)
+    ),
+    tag = "Auth"
+)]
 pub async fn verify_email(
     State(state): State<AppState>,
     Json(req): Json<VerifyEmailRequest>,
@@ -102,6 +135,15 @@ pub async fn verify_email(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/resend-verification",
+    request_body = ResendVerificationRequest,
+    responses(
+        (status = 202, description = "Verification email resent if user is unverified")
+    ),
+    tag = "Auth"
+)]
 pub async fn resend_verification(
     State(state): State<AppState>,
     Json(req): Json<ResendVerificationRequest>,
@@ -118,6 +160,15 @@ pub async fn resend_verification(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/refresh",
+    responses(
+        (status = 200, description = "Token refreshed successfully", body = AuthResponse),
+        (status = 401, description = "Invalid or expired refresh token", body = ProblemDetails)
+    ),
+    tag = "Auth"
+)]
 pub async fn refresh(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -143,6 +194,14 @@ pub async fn refresh(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/logout",
+    responses(
+        (status = 204, description = "Successfully logged out; refresh token cleared")
+    ),
+    tag = "Auth"
+)]
 pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -159,6 +218,18 @@ pub async fn logout(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/logout-all",
+    responses(
+        (status = 204, description = "All active sessions revoked"),
+        (status = 401, description = "Unauthorized", body = ProblemDetails)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Auth"
+)]
 pub async fn logout_all(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -173,6 +244,20 @@ pub async fn logout_all(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/change-password",
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 200, description = "Password changed successfully"),
+        (status = 400, description = "Bad Request - invalid old password or weak new password", body = ProblemDetails),
+        (status = 401, description = "Unauthorized", body = ProblemDetails)
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Auth"
+)]
 pub async fn change_password(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
