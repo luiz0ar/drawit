@@ -62,6 +62,7 @@ import { StyleInspector } from './ui/StyleInspector';
 import {
   downloadPngFile,
   downloadSvgFile,
+  generateThumbnailSvg,
 } from './export/imageExporter';
 import {
   downloadJsonFile,
@@ -240,7 +241,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         id: 'local-board-1',
         owner_id: 'local',
         group_id: null,
-        title: 'Quadro-1',
+        title: 'Board-1',
         tags: [],
         is_favorite: false,
         thumbnail: null,
@@ -352,11 +353,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
       },
       onViewportChange: (vp) => {
         setViewport({ ...vp });
-        scheduleSave(engine.getElements(), vp);
+        scheduleSave(
+          engine.getElements(),
+          vp,
+          generateThumbnailSvg(engine.getElements(), resolvedTheme)
+        );
       },
       onElementsChange: (elements) => {
         setActiveTool(engine.getTool());
-        scheduleSave(elements, engine.getViewport());
+        scheduleSave(
+          elements,
+          engine.getViewport(),
+          generateThumbnailSvg(elements, resolvedTheme)
+        );
       },
       onHistoryChange: (undoAvailable, redoAvailable) => {
         setCanUndo(undoAvailable);
@@ -430,7 +439,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
 
     engineRef.current.setViewport(newVp);
     setViewport(newVp);
-    scheduleSave(engineRef.current.getElements(), newVp);
+    scheduleSave(
+      engineRef.current.getElements(),
+      newVp,
+      generateThumbnailSvg(engineRef.current.getElements(), resolvedTheme)
+    );
   };
 
   const handleResetZoom = () => {
@@ -438,7 +451,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
     const newVp: ViewportTransform = { panX: 0, panY: 0, zoom: 1.0 };
     engineRef.current.setViewport(newVp);
     setViewport(newVp);
-    scheduleSave(engineRef.current.getElements(), newVp);
+    scheduleSave(
+      engineRef.current.getElements(),
+      newVp,
+      generateThumbnailSvg(engineRef.current.getElements(), resolvedTheme)
+    );
   };
 
   const handleDelete = () => {
@@ -507,7 +524,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
   };
 
   // Export & Import actions
-  const boardTitle = activeBoard?.title || 'Quadro-1';
+  const boardTitle = activeBoard?.title || 'Board-1';
   const bgColor = resolvedTheme === 'dark' ? '#090d16' : '#ffffff';
 
   const handleExportPng = async () => {
@@ -557,7 +574,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
           engineRef.current.setViewport(res.data.scene.viewport);
           setViewport(res.data.scene.viewport);
         }
-        scheduleSave(res.data.scene.elements, engineRef.current.getViewport());
+        scheduleSave(
+          res.data.scene.elements,
+          engineRef.current.getViewport(),
+          generateThumbnailSvg(res.data.scene.elements, resolvedTheme)
+        );
       } else {
         alert(res.error || 'Failed to import .drawit file');
       }

@@ -74,7 +74,7 @@ fn test_board_bson_datetime_roundtrip() {
         id: "b1".to_string(),
         owner_id: "u1".to_string(),
         group_id: None,
-        title: "Quadro-1".to_string(),
+        title: "Board-1".to_string(),
         tags: vec!["system-design".to_string()],
         is_favorite: true,
         thumbnail: None,

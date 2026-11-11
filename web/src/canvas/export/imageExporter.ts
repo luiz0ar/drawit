@@ -262,6 +262,31 @@ export function exportToSvgString(
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}" width="${bounds.width}" height="${bounds.height}">\n${svgContent}</svg>`;
 }
 
+/**
+ * Converts an SVG string into a base64 or URI-encoded data URL.
+ */
+export function svgToDataUrl(svg: string): string {
+  try {
+    const base64 = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${base64}`;
+  } catch {
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+}
+
+/**
+ * Generates a lightweight, vector-crisp board thumbnail data URL.
+ */
+export function generateThumbnailSvg(
+  elements: CanvasElement[],
+  theme: 'dark' | 'light' = 'light'
+): string | null {
+  if (!elements || elements.length === 0) return null;
+  const background = theme === 'dark' ? '#090d16' : '#ffffff';
+  const svg = exportToSvgString(elements, { background, padding: 24 });
+  return svgToDataUrl(svg);
+}
+
 export function downloadSvgFile(
   filename: string,
   elements: CanvasElement[],

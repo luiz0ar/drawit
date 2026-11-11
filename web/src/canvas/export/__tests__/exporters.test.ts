@@ -3,7 +3,12 @@ import {
   exportToJsonString,
   parseAndValidateDrawitJson,
 } from '../jsonExporter';
-import { computeSceneBounds, exportToSvgString } from '../imageExporter';
+import {
+  computeSceneBounds,
+  exportToSvgString,
+  generateThumbnailSvg,
+  svgToDataUrl,
+} from '../imageExporter';
 import { CanvasElement } from '../../engine/types';
 
 describe('Exporters', () => {
@@ -68,6 +73,21 @@ describe('Exporters', () => {
       expect(svg).toContain('<rect');
       expect(svg).toContain('fill="#f8fafc"');
       expect(svg).toContain('</svg>');
+    });
+
+    it('generates thumbnail SVG data URL for scenes', () => {
+      const dataUrl = generateThumbnailSvg(dummyElements, 'light');
+      expect(dataUrl).toBeDefined();
+      expect(dataUrl).toMatch(/^data:image\/svg\+xml;(base64|utf8),/);
+
+      // Empty elements returns null
+      const emptyThumb = generateThumbnailSvg([], 'light');
+      expect(emptyThumb).toBeNull();
+    });
+
+    it('encodes svg string to valid data URL', () => {
+      const dataUrl = svgToDataUrl('<svg></svg>');
+      expect(dataUrl.startsWith('data:image/svg+xml;')).toBe(true);
     });
   });
 });

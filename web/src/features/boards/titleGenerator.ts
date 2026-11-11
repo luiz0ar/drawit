@@ -1,11 +1,11 @@
 /**
  * Calculates the next default board title based on existing boards (including trashed).
- * Parses titles matching /^Quadro-(\d+)$/i and finds the maximum N.
- * Returns `Quadro-${maxN + 1}` (or `Quadro-1` if no matching titles).
+ * Parses titles matching /^Board-(\d+)$/i and finds the maximum N.
+ * Returns `Board-${maxN + 1}` (or `Board-1` if no matching titles).
  */
 export function generateNextBoardTitle(existingTitles: string[]): string {
   let maxN = 0;
-  const regex = /^Quadro-(\d+)$/i;
+  const regex = /^Board-(\d+)$/i;
 
   for (const title of existingTitles) {
     if (!title) continue;
@@ -18,7 +18,7 @@ export function generateNextBoardTitle(existingTitles: string[]): string {
     }
   }
 
-  return `Quadro-${maxN + 1}`;
+  return `Board-${maxN + 1}`;
 }
 
 /**

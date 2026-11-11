@@ -37,6 +37,74 @@ import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../context/ThemeContext';
 import { navigate } from '../../lib/router';
 import { generateNextBoardTitle, validateBoardTitle } from '../boards/titleGenerator';
+import { generateThumbnailSvg } from '../../canvas/export/imageExporter';
+
+interface BoardGridPreviewProps {
+  board: Board;
+  theme: 'dark' | 'light';
+}
+
+const BoardGridPreview: React.FC<BoardGridPreviewProps> = ({ board, theme }) => {
+  const [thumb, setThumb] = useState<string | null>(board.thumbnail);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (board.thumbnail) {
+      setThumb(board.thumbnail);
+      return;
+    }
+
+    if (!board.is_deleted) {
+      let isMounted = true;
+      setLoading(true);
+
+      BoardApi.getScene(board.id)
+        .then((scene) => {
+          if (!isMounted) return;
+          if (scene.elements && scene.elements.length > 0) {
+            const dataUrl = generateThumbnailSvg(scene.elements, theme);
+            if (dataUrl) {
+              setThumb(dataUrl);
+              BoardApi.update(board.id, { thumbnail: dataUrl }).catch(() => {});
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [board.id, board.thumbnail, board.is_deleted, theme]);
+
+  if (thumb) {
+    return (
+      <img
+        src={thumb}
+        alt={board.title}
+        className="w-full h-full object-contain p-2.5 transition-transform duration-200 group-hover:scale-105 pointer-events-none select-none"
+      />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="w-5 h-5 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-1.5 text-muted-foreground/40 select-none">
+      <Layers className="w-8 h-8" />
+      <span className="text-[10px] font-medium tracking-wide">Empty canvas</span>
+    </div>
+  );
+};
 
 type NavFilter =
   | { type: 'all' }
@@ -735,16 +803,8 @@ export const DashboardPage: React.FC = () => {
                   className="group border rounded-xl bg-card hover:border-primary/50 hover:shadow-md transition-all overflow-hidden flex flex-col cursor-pointer"
                 >
                   {/* Thumbnail Preview */}
-                  <div className="h-36 bg-muted/40 border-b flex items-center justify-center relative overflow-hidden">
-                    {b.thumbnail ? (
-                      <img
-                        src={b.thumbnail}
-                        alt={b.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Layers className="w-8 h-8 text-muted-foreground/40" />
-                    )}
+                  <div className="h-36 bg-muted/20 border-b flex items-center justify-center relative overflow-hidden">
+                    <BoardGridPreview board={b} theme={resolvedTheme} />
 
                     {!b.is_deleted && (
                       <button
