@@ -93,6 +93,12 @@ export class CanvasEngine {
   private isDirty = true;
   private theme: 'light' | 'dark' = 'light';
 
+  private releasePointer(pointerId: number) {
+    if (this.canvas.hasPointerCapture(pointerId)) {
+      this.canvas.releasePointerCapture(pointerId);
+    }
+  }
+
   constructor(canvas: HTMLCanvasElement, callbacks: CanvasEngineCallbacks = {}) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
@@ -951,11 +957,7 @@ export class CanvasEngine {
         this.isDirty = true;
         this.notifySelectionChange();
         this.callbacks.onEditElementText?.(hit, false);
-        try {
-          if (this.canvas.hasPointerCapture(e.pointerId)) {
-            this.canvas.releasePointerCapture(e.pointerId);
-          }
-        } catch {}
+        this.releasePointer(e.pointerId);
         this.isPointerDown = false;
         return;
       }
@@ -998,11 +1000,7 @@ export class CanvasEngine {
       this.notifySelectionChange();
       this.callbacks.onElementsChange?.(this.elements);
       this.callbacks.onEditElementText?.(newTextEl, true);
-      try {
-        if (this.canvas.hasPointerCapture(e.pointerId)) {
-          this.canvas.releasePointerCapture(e.pointerId);
-        }
-      } catch {}
+      this.releasePointer(e.pointerId);
       this.isPointerDown = false;
       return;
     }
@@ -1507,13 +1505,7 @@ export class CanvasEngine {
   private onPointerUp = (e: PointerEvent) => {
     if (!this.isPointerDown) return;
 
-    try {
-      if (this.canvas.hasPointerCapture(e.pointerId)) {
-        this.canvas.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // Ignored
-    }
+    this.releasePointer(e.pointerId);
 
     this.isPointerDown = false;
     this.isPanning = false;

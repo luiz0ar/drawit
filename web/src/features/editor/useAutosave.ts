@@ -44,8 +44,8 @@ export async function writeWalEntry(entry: WalEntry): Promise<void> {
     if (db) {
       await db.put('pending_scenes', entry);
     }
-  } catch {
-    // Ignore IndexedDB quota or private browsing errors
+  } catch (err) {
+    console.warn(`[useAutosave] Failed to persist WAL entry for board "${entry.boardId}":`, err);
   }
 }
 
@@ -55,8 +55,8 @@ export async function clearWalEntry(boardId: string): Promise<void> {
     if (db) {
       await db.delete('pending_scenes', boardId);
     }
-  } catch {
-    // Ignore
+  } catch (err) {
+    console.warn(`[useAutosave] Failed to delete WAL entry for board "${boardId}":`, err);
   }
 }
 
@@ -66,8 +66,8 @@ export async function readWalEntry(boardId: string): Promise<WalEntry | undefine
     if (db) {
       return await db.get('pending_scenes', boardId);
     }
-  } catch {
-    // Ignore
+  } catch (err) {
+    console.warn(`[useAutosave] Failed to read WAL entry for board "${boardId}":`, err);
   }
   return undefined;
 }

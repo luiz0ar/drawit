@@ -232,7 +232,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
       setBoards(fetchedBoards);
       setGroups(fetchedGroups);
       return fetchedBoards;
-    } catch {
+    } catch (err) {
+      console.warn('Failed to fetch remote boards/groups, falling back to local session:', err);
       const fallback: Board = {
         id: 'local-board-1',
         owner_id: 'local',
@@ -272,7 +273,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
           setViewport(vp);
           setSavedHash(computeContentHash(els, vp));
         }
-      } catch {
+      } catch (err) {
+        console.warn('Failed to load board scene from server, initializing empty scene:', err);
         setServerRevision(1);
         if (engineRef.current) {
           engineRef.current.setElements([], true);
@@ -299,8 +301,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
             await loadBoardScene(single);
           }
           return;
-        } catch {
-          // Fallback to first board
+        } catch (err) {
+          console.warn(`Failed to fetch board with id ${boardId}, falling back to default list:`, err);
         }
       }
       if (loadedBoards.length > 0) {
@@ -569,7 +571,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
       const updated = await BoardApi.update(activeBoard.id, { title: newTitle });
       setActiveBoard(updated);
       setBoards((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
-    } catch {
+    } catch (err) {
+      console.error('Failed to update board title on server, applying locally:', err);
       setActiveBoard({ ...activeBoard, title: newTitle });
     }
   };

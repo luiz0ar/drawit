@@ -139,7 +139,8 @@ async function performTokenRefresh(): Promise<string | null> {
       const data: AuthResponse = await response.json();
       currentAccessToken = data.access_token;
       return data.access_token;
-    } catch {
+    } catch (err) {
+      console.warn('[api] Failed to refresh authentication token:', err);
       currentAccessToken = null;
       return null;
     } finally {
@@ -193,12 +194,13 @@ export async function request<T>(
     let problem: ProblemDetails;
     try {
       problem = await response.json();
-    } catch {
+    } catch (_parseError) {
+      // Non-JSON error response payload (e.g. gateway timeout or proxy plain text)
       problem = {
         type: 'about:blank',
         title: response.statusText || 'Error',
         status: response.status,
-        detail: `HTTP ${response.status}`,
+        detail: `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`,
         instance: endpoint,
       };
     }

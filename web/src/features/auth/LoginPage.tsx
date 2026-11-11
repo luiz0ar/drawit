@@ -16,13 +16,22 @@ import { Link, navigate } from '../../lib/router';
 import { useTheme } from '../../context/ThemeContext';
 import { ApiError } from '../../lib/api';
 
+const REMEMBERED_USERNAME_KEY = 'drawit_remembered_username';
+
 export const LoginPage: React.FC = () => {
   const { login } = useAuthStore();
   const { resolvedTheme, setTheme } = useTheme();
 
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(REMEMBERED_USERNAME_KEY) || '';
+  });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(window.localStorage.getItem(REMEMBERED_USERNAME_KEY));
+  });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -43,6 +52,14 @@ export const LoginPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       await login(trimmedUser, password);
+
+      // Handle Remember Me persistence
+      if (rememberMe) {
+        window.localStorage.setItem(REMEMBERED_USERNAME_KEY, trimmedUser);
+      } else {
+        window.localStorage.removeItem(REMEMBERED_USERNAME_KEY);
+      }
+
       navigate('/boards', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -155,6 +172,23 @@ export const LoginPage: React.FC = () => {
                 )}
               </button>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between py-0.5">
+            <label
+              htmlFor="login-remember-me"
+              className="flex items-center gap-2 text-xs text-foreground cursor-pointer select-none"
+            >
+              <input
+                id="login-remember-me"
+                name="rememberMe"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-border text-primary focus:ring-primary focus:ring-offset-background cursor-pointer accent-primary"
+              />
+              <span>Remember me</span>
+            </label>
           </div>
 
           <button
