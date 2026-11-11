@@ -96,20 +96,30 @@ impl AuthService {
         let username = req.username.trim().to_lowercase();
         let password = req.password;
 
-        let user = self
+        let user_opt = self
             .users_col
             .find_one(doc! { "username": &username })
             .await
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .ok_or_else(|| AppError::Unauthorized("Invalid username or password.".to_string()))?;
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        let is_valid =
-            PasswordService::verify_password(password, user.password_hash.clone()).await?;
-        if !is_valid {
-            return Err(AppError::Unauthorized(
-                "Invalid username or password.".to_string(),
-            ));
-        }
+        // Constant-time defense: execute password verification on a valid dummy hash
+        // even if user is not found to prevent timing side-channel user enumeration.
+        const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$WEDNDxlpgAra9d7zpwalTw$aj5O4j1QFg45uvp1waCWNny9pM1eVeDeUyeJhEz/kNc";
+        let target_hash = match &user_opt {
+            Some(u) => u.password_hash.clone(),
+            None => DUMMY_HASH.to_string(),
+        };
+
+        let is_valid = PasswordService::verify_password(password, target_hash).await?;
+
+        let user = match user_opt {
+            Some(u) if is_valid => u,
+            _ => {
+                return Err(AppError::Unauthorized(
+                    "Invalid username or password.".to_string(),
+                ));
+            }
+        };
 
         self.create_session(&user, user_agent).await
     }

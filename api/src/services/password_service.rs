@@ -41,3 +41,27 @@ impl PasswordService {
         .map_err(|e| AppError::Internal(format!("Thread pool executor error: {}", e)))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_hash_and_verify() {
+        let hash = PasswordService::hash_password("dummy_password_for_timing_safety".to_string())
+            .await
+            .unwrap();
+        println!("VALID_ARGON2_HASH: {}", hash);
+        assert!(PasswordService::verify_password(
+            "dummy_password_for_timing_safety".to_string(),
+            hash.clone()
+        )
+        .await
+        .unwrap());
+        assert!(
+            !PasswordService::verify_password("wrong_password".to_string(), hash)
+                .await
+                .unwrap()
+        );
+    }
+}

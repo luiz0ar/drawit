@@ -10,6 +10,7 @@ pub struct AppConfig {
     pub jwt_expiration_minutes: i64,
     pub refresh_token_expiration_days: i64,
     pub frontend_origin: String,
+    pub login_delay_ms: u64,
 }
 
 impl AppConfig {
@@ -38,6 +39,10 @@ impl AppConfig {
                 .expect("REFRESH_TOKEN_EXPIRATION_DAYS must be an integer"),
             frontend_origin: env::var("FRONTEND_ORIGIN")
                 .unwrap_or_else(|_| "http://localhost:3000".to_string()),
+            login_delay_ms: env::var("LOGIN_DELAY_MS")
+                .unwrap_or_else(|_| "1000".to_string())
+                .parse()
+                .unwrap_or(1000),
         }
     }
 }

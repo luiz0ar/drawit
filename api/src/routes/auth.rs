@@ -73,7 +73,17 @@ pub async fn login(
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
 
-    let (response, raw_refresh_token) = auth_service.login(req, user_agent).await?;
+    let login_result = auth_service.login(req, user_agent).await;
+
+    // Security: fixed delay to mitigate automated brute-force attacks and timing analysis
+    if state.config.login_delay_ms > 0 {
+        tokio::time::sleep(tokio::time::Duration::from_millis(
+            state.config.login_delay_ms,
+        ))
+        .await;
+    }
+
+    let (response, raw_refresh_token) = login_result?;
     let cookie_header = build_refresh_cookie(
         &raw_refresh_token,
         state.config.refresh_token_expiration_days,
