@@ -46,42 +46,24 @@ function distToSegment(p: WorldPoint, a: WorldPoint, b: WorldPoint): number {
 }
 
 /**
- * Checks if a point hits a rectangle.
+ * Checks if a point hits a rectangle or rectangular component.
+ * Allows clicking anywhere inside the component (even if transparent) or near its borders.
  */
 function hitTestRectangle(localPoint: WorldPoint, element: CanvasElement, threshold = 6): boolean {
   const left = Math.min(element.x, element.x + element.width);
   const right = Math.max(element.x, element.x + element.width);
   const top = Math.min(element.y, element.y + element.height);
-  const bottom = Math.max(element.y, element.y + element.height);
+  // IT components render their text label below the component box
+  const labelExtra =
+    element.type === 'component' && Boolean((element as any).label) ? 24 : 0;
+  const bottom = Math.max(element.y, element.y + element.height) + labelExtra;
 
-  const isFilled =
-    (element.style.fillColor !== 'transparent' && element.style.fillColor !== '') ||
-    element.type === 'component' ||
-    element.type === 'text' ||
-    element.type === 'sticky' ||
-    Boolean(element.label);
-
-  if (isFilled) {
-    return (
-      localPoint.x >= left - threshold &&
-      localPoint.x <= right + threshold &&
-      localPoint.y >= top - threshold &&
-      localPoint.y <= bottom + threshold
-    );
-  }
-
-  // If transparent, hit test on the boundary stroke only
-  const onVerticalBorder =
-    (Math.abs(localPoint.x - left) <= threshold || Math.abs(localPoint.x - right) <= threshold) &&
-    localPoint.y >= top - threshold &&
-    localPoint.y <= bottom + threshold;
-
-  const onHorizontalBorder =
-    (Math.abs(localPoint.y - top) <= threshold || Math.abs(localPoint.y - bottom) <= threshold) &&
+  return (
     localPoint.x >= left - threshold &&
-    localPoint.x <= right + threshold;
-
-  return onVerticalBorder || onHorizontalBorder;
+    localPoint.x <= right + threshold &&
+    localPoint.y >= top - threshold &&
+    localPoint.y <= bottom + threshold
+  );
 }
 
 /**
@@ -127,7 +109,9 @@ export function elementIntersectsMarquee(
   const left = Math.min(element.x, element.x + element.width);
   const right = Math.max(element.x, element.x + element.width);
   const top = Math.min(element.y, element.y + element.height);
-  const bottom = Math.max(element.y, element.y + element.height);
+  const labelExtra =
+    element.type === 'component' && Boolean((element as any).label) ? 24 : 0;
+  const bottom = Math.max(element.y, element.y + element.height) + labelExtra;
 
   return !(
     right < marquee.minX ||
@@ -138,7 +122,7 @@ export function elementIntersectsMarquee(
 }
 
 /**
- * Checks if a point hits an ellipse.
+ * Checks if a point hits an ellipse anywhere inside or near its border.
  */
 function hitTestEllipse(localPoint: WorldPoint, element: CanvasElement, threshold = 6): boolean {
   const rx = Math.abs(element.width) / 2;
@@ -151,27 +135,17 @@ function hitTestEllipse(localPoint: WorldPoint, element: CanvasElement, threshol
   const dx = localPoint.x - cx;
   const dy = localPoint.y - cy;
 
-  const normDist = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-  const isFilled =
-    (element.style.fillColor !== 'transparent' && element.style.fillColor !== '') ||
-    Boolean(element.label);
+  const rxWithThresh = rx + threshold;
+  const ryWithThresh = ry + threshold;
+  const normDist =
+    (dx * dx) / (rxWithThresh * rxWithThresh) +
+    (dy * dy) / (ryWithThresh * ryWithThresh);
 
-  if (isFilled) {
-    return normDist <= 1.05;
-  }
-
-  const outerNorm =
-    (dx * dx) / ((rx + threshold) * (rx + threshold)) +
-    (dy * dy) / ((ry + threshold) * (ry + threshold));
-  const innerNorm =
-    (dx * dx) / (Math.max(1, rx - threshold) * Math.max(1, rx - threshold)) +
-    (dy * dy) / (Math.max(1, ry - threshold) * Math.max(1, ry - threshold));
-
-  return outerNorm <= 1.0 && innerNorm >= 1.0;
+  return normDist <= 1.0;
 }
 
 /**
- * Checks if a point hits a diamond using L1 norm.
+ * Checks if a point hits a diamond anywhere inside or near its border using L1 norm.
  */
 function hitTestDiamond(localPoint: WorldPoint, element: CanvasElement, threshold = 6): boolean {
   const rx = Math.abs(element.width) / 2;
@@ -181,17 +155,13 @@ function hitTestDiamond(localPoint: WorldPoint, element: CanvasElement, threshol
   const cx = element.x + element.width / 2;
   const cy = element.y + element.height / 2;
 
-  const l1Norm = Math.abs(localPoint.x - cx) / rx + Math.abs(localPoint.y - cy) / ry;
-  const isFilled =
-    (element.style.fillColor !== 'transparent' && element.style.fillColor !== '') ||
-    Boolean(element.label);
+  const rxWithThresh = rx + threshold;
+  const ryWithThresh = ry + threshold;
+  const l1Norm =
+    Math.abs(localPoint.x - cx) / rxWithThresh +
+    Math.abs(localPoint.y - cy) / ryWithThresh;
 
-  if (isFilled) {
-    return l1Norm <= 1.05;
-  }
-
-  const strokeThresholdNorm = threshold / Math.min(rx, ry);
-  return Math.abs(l1Norm - 1.0) <= strokeThresholdNorm;
+  return l1Norm <= 1.0;
 }
 
 /**

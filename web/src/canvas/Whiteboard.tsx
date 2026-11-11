@@ -979,7 +979,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
       {/* Interactive 2D Infinite Canvas */}
       <canvas
         ref={canvasRef}
-        className="w-full h-full block touch-none cursor-crosshair"
+        className="w-full h-full block touch-none"
       />
     </div>
   );

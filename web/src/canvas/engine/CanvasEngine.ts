@@ -96,6 +96,7 @@ export class CanvasEngine {
     this.callbacks = callbacks;
 
     this.setupEventListeners();
+    this.updateCursor(this.lastScreenPoint, screenToWorld(this.lastScreenPoint, this.viewport));
     this.startRenderLoop();
   }
 
@@ -154,6 +155,7 @@ export class CanvasEngine {
 
   public setTool(tool: Tool) {
     this.activeTool = tool;
+    this.updateCursor(this.lastScreenPoint, screenToWorld(this.lastScreenPoint, this.viewport));
   }
 
   public getTool(): Tool {
@@ -527,6 +529,81 @@ export class CanvasEngine {
     if (this.isMarqueeSelecting && this.marqueeBox) {
       this.renderer.renderMarquee(this.marqueeBox, this.viewport);
     }
+  }
+
+  private getResizeCursor(handle: ResizeHandle): string {
+    switch (handle) {
+      case 'nw':
+      case 'se':
+        return 'nwse-resize';
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize';
+      case 'n':
+      case 's':
+        return 'ns-resize';
+      case 'e':
+      case 'w':
+        return 'ew-resize';
+      case 'rotate':
+        return 'grab';
+      default:
+        return 'default';
+    }
+  }
+
+  private updateCursor(screenPoint: ScreenPoint, currentWorld: WorldPoint) {
+    if (this.isPanning || (this.isPointerDown && this.activeTool === 'hand')) {
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+    if (this.activeTool === 'hand' || this.isSpacePressed) {
+      this.canvas.style.cursor = 'grab';
+      return;
+    }
+    if (this.isDraggingElement) {
+      this.canvas.style.cursor = 'move';
+      return;
+    }
+    if (this.isResizingElement && this.activeResizeHandle) {
+      this.canvas.style.cursor = this.getResizeCursor(this.activeResizeHandle);
+      return;
+    }
+
+    if (this.activeTool === 'select') {
+      if (this.selectedIds.size === 1) {
+        const selectedEl = this.getSelectedElements()[0];
+        if (selectedEl && !selectedEl.locked) {
+          const handle = hitTestSelectionHandle(screenPoint, selectedEl, this.viewport);
+          if (handle) {
+            this.canvas.style.cursor = this.getResizeCursor(handle);
+            return;
+          }
+        }
+      }
+
+      for (let i = this.elements.length - 1; i >= 0; i--) {
+        if (hitTestElement(currentWorld, this.elements[i])) {
+          this.canvas.style.cursor = this.elements[i].locked ? 'not-allowed' : 'move';
+          return;
+        }
+      }
+
+      this.canvas.style.cursor = 'default';
+      return;
+    }
+
+    if (this.activeTool === 'text') {
+      this.canvas.style.cursor = 'text';
+      return;
+    }
+
+    if (this.activeTool === 'eraser') {
+      this.canvas.style.cursor = 'pointer';
+      return;
+    }
+
+    this.canvas.style.cursor = 'crosshair';
   }
 
   private setupEventListeners() {
@@ -951,6 +1028,8 @@ export class CanvasEngine {
       this.isDirty = true;
     }
 
+    this.updateCursor(screenPoint, currentWorld);
+
     if (!this.isPointerDown) return;
 
     if (this.isPanning) {
@@ -1073,6 +1152,14 @@ export class CanvasEngine {
         if (this.selectedIds.has(el.id) && !el.locked) {
           el.x += deltaWorldX;
           el.y += deltaWorldY;
+
+          if (el.type === 'arrow' && Array.isArray((el as any).points)) {
+            const arrow = el as any;
+            for (const pt of arrow.points) {
+              pt.x += deltaWorldX;
+              pt.y += deltaWorldY;
+            }
+          }
         }
       }
 
@@ -1210,6 +1297,13 @@ export class CanvasEngine {
       this.notifySelectionChange();
       this.callbacks.onElementsChange?.(this.elements);
     }
+
+    const rect = this.canvas.getBoundingClientRect();
+    const screenPoint: ScreenPoint = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+    this.updateCursor(screenPoint, screenToWorld(screenPoint, this.viewport));
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -1225,6 +1319,7 @@ export class CanvasEngine {
 
     if (e.code === 'Space' && !this.isSpacePressed) {
       this.isSpacePressed = true;
+      this.updateCursor(this.lastScreenPoint, screenToWorld(this.lastScreenPoint, this.viewport));
     }
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -1276,21 +1371,22 @@ export class CanvasEngine {
       return;
     }
 
-    if (e.key === 'v' || e.key === 'V') this.activeTool = 'select';
-    if (e.key === 'h' || e.key === 'H') this.activeTool = 'hand';
-    if (e.key === 'r' || e.key === 'R') this.activeTool = 'rectangle';
-    if (e.key === 'o' || e.key === 'O') this.activeTool = 'ellipse';
-    if (e.key === 'd' || e.key === 'D') this.activeTool = 'diamond';
-    if (e.key === 'a' || e.key === 'A') this.activeTool = 'arrow';
-    if (e.key === 't' || e.key === 'T') this.activeTool = 'text';
-    if (e.key === 's' || e.key === 'S') this.activeTool = 'sticky';
-    if (e.key === 'p' || e.key === 'P') this.activeTool = 'freehand';
-    if (e.key === 'e' || e.key === 'E') this.activeTool = 'eraser';
+    if (e.key === 'v' || e.key === 'V') this.setTool('select');
+    if (e.key === 'h' || e.key === 'H') this.setTool('hand');
+    if (e.key === 'r' || e.key === 'R') this.setTool('rectangle');
+    if (e.key === 'o' || e.key === 'O') this.setTool('ellipse');
+    if (e.key === 'd' || e.key === 'D') this.setTool('diamond');
+    if (e.key === 'a' || e.key === 'A') this.setTool('arrow');
+    if (e.key === 't' || e.key === 'T') this.setTool('text');
+    if (e.key === 's' || e.key === 'S') this.setTool('sticky');
+    if (e.key === 'p' || e.key === 'P') this.setTool('freehand');
+    if (e.key === 'e' || e.key === 'E') this.setTool('eraser');
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
     if (e.code === 'Space') {
       this.isSpacePressed = false;
+      this.updateCursor(this.lastScreenPoint, screenToWorld(this.lastScreenPoint, this.viewport));
     }
   };
 }

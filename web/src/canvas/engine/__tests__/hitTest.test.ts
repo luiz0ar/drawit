@@ -36,6 +36,66 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
     expect(hitTestElement({ x: 350, y: 250 }, baseElement)).toBe(false);
   });
 
+  it('correctly detects hits anywhere inside transparent shapes (rectangles, ellipses, diamonds)', () => {
+    const transparentRect: CanvasElement = {
+      ...baseElement,
+      style: {
+        ...baseElement.style,
+        fillColor: 'transparent',
+      },
+    };
+    // Deep inside the transparent rectangle
+    expect(hitTestElement({ x: 150, y: 150 }, transparentRect)).toBe(true);
+    expect(hitTestElement({ x: 200, y: 120 }, transparentRect)).toBe(true);
+
+    const transparentEllipse: CanvasElement = {
+      ...baseElement,
+      type: 'ellipse',
+      style: {
+        ...baseElement.style,
+        fillColor: 'transparent',
+      },
+    };
+    // Center and interior of transparent ellipse
+    expect(hitTestElement({ x: 200, y: 150 }, transparentEllipse)).toBe(true);
+    expect(hitTestElement({ x: 160, y: 140 }, transparentEllipse)).toBe(true);
+
+    const transparentDiamond: CanvasElement = {
+      ...baseElement,
+      type: 'diamond',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      style: {
+        ...baseElement.style,
+        fillColor: 'transparent',
+      },
+    };
+    // Center of transparent diamond
+    expect(hitTestElement({ x: 150, y: 150 }, transparentDiamond)).toBe(true);
+  });
+
+  it('detects hits anywhere inside IT components and on their labels', () => {
+    const itComp: CanvasElement = {
+      ...baseElement,
+      type: 'component',
+      x: 200,
+      y: 200,
+      width: 100,
+      height: 80,
+      componentKey: 'database',
+      label: 'PostgreSQL Primary',
+    } as any;
+
+    // Inside the component body
+    expect(hitTestElement({ x: 250, y: 240 }, itComp)).toBe(true);
+    // On the bottom label
+    expect(hitTestElement({ x: 250, y: 290 }, itComp)).toBe(true);
+    // Outside the component
+    expect(hitTestElement({ x: 100, y: 100 }, itComp)).toBe(false);
+  });
+
   it('correctly tests rotated elements using inverse affine transformation', () => {
     const rotatedElement: CanvasElement = {
       ...baseElement,
