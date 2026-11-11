@@ -129,7 +129,11 @@ function createLucideComponent(
       // 1. Sleek rounded container card
       ctx.beginPath();
       const radius = Math.min(12, Math.min(w, h) * 0.18);
-      ctx.roundRect ? ctx.roundRect(x, y, w, h, radius) : ctx.rect(x, y, w, h);
+      if (ctx.roundRect) {
+        ctx.roundRect(x, y, w, h, radius);
+      } else {
+        ctx.rect(x, y, w, h);
+      }
       ctx.fill();
       ctx.stroke();
 

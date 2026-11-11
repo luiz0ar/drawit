@@ -391,9 +391,11 @@ export class CanvasRenderer {
     switch (element.type) {
       case 'rectangle':
         ctx.beginPath();
-        ctx.roundRect
-          ? ctx.roundRect(element.x, element.y, element.width, element.height, 6)
-          : ctx.rect(element.x, element.y, element.width, element.height);
+        if (ctx.roundRect) {
+          ctx.roundRect(element.x, element.y, element.width, element.height, 6);
+        } else {
+          ctx.rect(element.x, element.y, element.width, element.height);
+        }
         if (element.style.fillColor !== 'transparent') ctx.fill();
         ctx.stroke();
         if (element.label && element.id !== this.editingId) {

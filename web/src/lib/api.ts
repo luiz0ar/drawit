@@ -219,7 +219,7 @@ export async function request<T>(
     let problem: ProblemDetails;
     try {
       problem = await response.json();
-    } catch (_parseError) {
+    } catch {
       // Non-JSON error response payload (e.g. gateway timeout or proxy plain text)
       problem = {
         type: 'about:blank',

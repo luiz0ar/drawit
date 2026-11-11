@@ -83,7 +83,7 @@ export const useAuthStore = create<AuthState>((set) => {
           isAuthenticated: true,
           isLoading: false,
         });
-      } catch (_unauthenticated) {
+      } catch {
         // User session is unauthenticated or cookie expired; reset auth state safely
         setAccessToken(null);
         set({
