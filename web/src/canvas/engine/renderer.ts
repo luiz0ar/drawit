@@ -249,7 +249,7 @@ export class CanvasRenderer {
 
       const badgeBg = theme === 'dark' ? '#0f172a' : '#ffffff';
       const badgeBorder = theme === 'dark' ? '#334155' : '#cbd5e1';
-      const textColor = theme === 'dark' ? '#f8fafc' : '#0f172a';
+      const textColor = theme === 'dark' ? '#ffffff' : '#0f172a';
 
       ctx.save();
       ctx.shadowBlur = 4;
@@ -448,7 +448,7 @@ export class CanvasRenderer {
             element.y + 8,
             element.width - 16,
             element.height - 16,
-            '#1e293b',
+            '#000',
             fontSize
           );
         }

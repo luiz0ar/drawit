@@ -1133,7 +1133,6 @@ export class CanvasEngine {
     if (this.activeTool in IT_COMPONENTS) {
       this.pushHistorySnapshot();
       const compDef = IT_COMPONENTS[this.activeTool];
-      const strokeColor = this.theme === 'dark' ? '#e2e8f0' : '#1e293b';
 
       const newComp: CanvasElement = {
         id: `comp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1149,8 +1148,8 @@ export class CanvasEngine {
         groupIds: [],
         locked: false,
         style: {
-          strokeColor,
-          fillColor: this.theme === 'dark' ? '#0f172a' : '#ffffff',
+          strokeColor: this.theme === 'dark' ? '#ffffff' : '#000',
+          fillColor: 'transparent',
           strokeWidth: 2,
           strokeStyle: 'solid',
           opacity: 100,

@@ -28,8 +28,8 @@ interface StyleInspectorProps {
 }
 
 const STROKE_COLORS = [
-  '#1e293b',
-  '#f8fafc',
+  '#000',
+  '#ffffff',
   '#2563eb',
   '#059669',
   '#d97706',
@@ -99,11 +99,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
           <button
             onClick={onToggleLock}
             title={allLocked ? 'Unlock Element' : 'Lock Element'}
-            className={`p-1.5 rounded transition-colors ${
-              allLocked
+            className={`p-1.5 rounded transition-colors ${allLocked
                 ? 'bg-amber-500/15 text-amber-500'
                 : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-            }`}
+              }`}
           >
             {allLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
           </button>
@@ -134,9 +133,8 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
             <button
               key={c}
               onClick={() => onUpdateStyle({ strokeColor: c })}
-              className={`w-5 h-5 rounded-full border transition-transform ${
-                style.strokeColor === c ? 'scale-110 ring-2 ring-primary ring-offset-1' : ''
-              }`}
+              className={`w-5 h-5 rounded-full border transition-transform ${style.strokeColor === c ? 'scale-110 ring-2 ring-primary ring-offset-1' : ''
+                }`}
               style={{ backgroundColor: c }}
               title={c}
             />
@@ -161,11 +159,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
               <button
                 key={label}
                 onClick={() => onUpdateFontSize(size)}
-                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
-                  currentFontSize === size
+                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${currentFontSize === size
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -185,9 +182,8 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
               <button
                 key={c}
                 onClick={() => onUpdateStyle({ fillColor: c })}
-                className={`w-5 h-5 rounded-full border transition-transform ${
-                  style.fillColor === c ? 'scale-110 ring-2 ring-primary ring-offset-1' : ''
-                }`}
+                className={`w-5 h-5 rounded-full border transition-transform ${style.fillColor === c ? 'scale-110 ring-2 ring-primary ring-offset-1' : ''
+                  }`}
                 style={{
                   backgroundColor: c === 'transparent' ? 'transparent' : c,
                   backgroundImage:
@@ -215,11 +211,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
                 <button
                   key={w}
                   onClick={() => onUpdateStyle({ strokeWidth: w })}
-                  className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
-                    style.strokeWidth === w
+                  className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${style.strokeWidth === w
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {w}px
                 </button>
@@ -236,11 +231,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
                 <button
                   key={s}
                   onClick={() => onUpdateStyle({ strokeStyle: s })}
-                  className={`flex-1 py-1 text-[10px] capitalize rounded font-medium transition-colors ${
-                    style.strokeStyle === s
+                  className={`flex-1 py-1 text-[10px] capitalize rounded font-medium transition-colors ${style.strokeStyle === s
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {s.slice(0, 4)}
                 </button>
@@ -267,11 +261,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
               <button
                 key={label}
                 onClick={() => onUpdateFontSize(size)}
-                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
-                  currentFontSize === size
+                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${currentFontSize === size
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -291,11 +284,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
               <button
                 key={r}
                 onClick={() => onUpdateRouting(r)}
-                className={`flex-1 py-1 text-[11px] capitalize rounded font-medium transition-colors ${
-                  currentRouting === r
+                className={`flex-1 py-1 text-[11px] capitalize rounded font-medium transition-colors ${currentRouting === r
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {r === 'orthogonal' ? 'Ortho' : r}
               </button>
@@ -324,11 +316,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
                     },
                   })
                 }
-                className={`flex-1 py-1 text-[11px] capitalize rounded font-medium transition-colors ${
-                  (style.effect?.type || 'none') === eff
+                className={`flex-1 py-1 text-[11px] capitalize rounded font-medium transition-colors ${(style.effect?.type || 'none') === eff
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {eff}
               </button>

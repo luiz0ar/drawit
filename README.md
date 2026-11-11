@@ -14,6 +14,9 @@
   <a href="https://github.com/luis-felipe/drawit/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/backend-Rust%20%7C%20Axum-orange?style=flat-square&logo=rust" alt="Rust Axum" /></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/frontend-React%2018%20%7C%20TypeScript-blue?style=flat-square&logo=react" alt="React 18" /></a>
+  <a href="https://bun.sh/"><img src="https://img.shields.io/badge/runtime-Bun-fbf0df?style=flat-square&logo=bun" alt="Bun" /></a>
+  <a href="https://pnpm.io/"><img src="https://img.shields.io/badge/package%20manager-pnpm-f69220?style=flat-square&logo=pnpm" alt="pnpm" /></a>
+  <a href="https://nginx.org/"><img src="https://img.shields.io/badge/proxy-Nginx-009639?style=flat-square&logo=nginx" alt="Nginx" /></a>
   <a href="https://www.mongodb.com/"><img src="https://img.shields.io/badge/database-MongoDB-green?style=flat-square&logo=mongodb" alt="MongoDB" /></a>
   <a href="https://www.rabbitmq.com/"><img src="https://img.shields.io/badge/queue-RabbitMQ-orange?style=flat-square&logo=rabbitmq" alt="RabbitMQ" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License" /></a>
@@ -83,8 +86,16 @@ Instant, standardized vector components ready to drop directly into your diagram
 - Export diagrams or selected regions to **retina-ready PNG** (2x / 3x scaling) and **pure SVG**.
 - Export and import boards as versioned **JSON** schemas for version control, backups, and team sharing.
 
+### 🔐 Robust Authentication & Security
+- **Email Verification Flow:** Asynchronous email dispatch via RabbitMQ and SMTP with SHA-256 hashed single-use tokens and 90-second resend cooldowns.
+- **Password Reset & Recovery:** Secure forgot-password flow with time-limited tokens and automated email delivery.
+- **Strict Password Complexity Policy:** Enforces 5 rules (min. 8 characters, uppercase, lowercase, number, special character) validated synchronously on backend and frontend with real-time UI feedback.
+- **Session Security:** Argon2id password hashing, short-lived JWT access tokens with rolling refresh tokens, and instant multi-device revocation.
+- **RFC 7807 Problem Details:** Standardized error contracts across all authentication and API endpoints.
+
 ### 🔒 Enterprise Privacy & Complete Self-Hosting
 - Keep your proprietary system architecture and infrastructure topology on your own servers.
+- **Unified Nginx Reverse Proxy:** Single entry point (`http://localhost`) seamlessly routing frontend SPA, backend API endpoints, WebSocket connections, and MailHog without CORS friction.
 - Ready to deploy with a single Docker Compose command.
 
 ---
@@ -115,8 +126,12 @@ Once the containers are running, navigate to:
 
 | Service | URL | Notes |
 | :--- | :--- | :--- |
-| **DrawIt Web Application** | [http://localhost:3000](http://localhost:3000) | Register any account to start diagramming immediately |
-| **MailHog (Email Sandbox)** | [http://localhost:8025](http://localhost:8025) | Open to view verification emails and magic links |
+| **DrawIt Web Application (Nginx)** | [http://localhost](http://localhost) | Primary entry point proxying both frontend and API |
+| **Frontend Dev Server (Direct)** | [http://localhost:3000](http://localhost:3000) | Vite dev server with WebSocket hot reload |
+| **Backend API (Direct)** | [http://localhost:8080](http://localhost:8080) | Axum REST gateway and WebSocket routes |
+| **Scalar API Documentation** | [http://localhost/scalar](http://localhost/scalar) or `:8080/scalar` | Interactive OpenAPI 3.0 reference (dev mode) |
+| **MailHog (Email Sandbox)** | [http://localhost/mailhog/](http://localhost/mailhog/) or `:8025` | Local inbox for email verification and password reset |
+| **RabbitMQ Management** | [http://localhost:15672](http://localhost:15672) | AMQP queue and message broker dashboard |
 
 ---
 

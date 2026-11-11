@@ -23,32 +23,41 @@ Thank you for your interest in contributing to **DrawIt**! This document provide
 
 ## 🏗️ System Architecture
 
-DrawIt is architected as a high-performance decoupled distributed system:
+DrawIt is architected as a high-performance decoupled distributed system fronted by an Nginx reverse proxy:
 
 ```mermaid
 flowchart TD
-    subgraph Client ["Client Browser (Single Page App)"]
-        UI["React 18 + Tailwind CSS / shadcn/ui"]
+    Browser["User Browser / Client"]
+
+    subgraph Gateway ["Reverse Proxy Gateway"]
+        Nginx["Nginx Reverse Proxy\n[Port 80]"]
+    end
+
+    subgraph FrontendApp ["Frontend (React 18 + Vite)"]
+        UI["React SPA + Tailwind CSS / shadcn/ui\n[Port 3000]"]
         Engine["Custom Canvas 2D Engine\n(RBush Spatial R-Tree)"]
         Cache[("IndexedDB Local Store\n(Offline Sync)")]
         UI <--> Engine
         Engine <--> Cache
     end
 
-    subgraph Backend ["Backend Services (Rust / Tokio)"]
+    subgraph BackendApp ["Backend Services (Rust / Tokio)"]
         API["Axum REST Gateway\n[Port 8080]"]
-        Worker["Async Email & Task Daemon\n(Tokio + Lapin)"]
+        Worker["Async Email Worker Daemon\n(Tokio + Lapin)"]
         Scalar["Utoipa OpenAPI & Scalar UI\n[/scalar]"]
         API --> Scalar
     end
 
-    subgraph Data ["Data & Messaging Infrastructure"]
+    subgraph Infra ["Data & Messaging Infrastructure"]
         Mongo[("MongoDB 7.0\n[Port 27017]")]
         RMQ[("RabbitMQ 3.x\n[Port 5672 / 15672]")]
         MailHog["MailHog SMTP Sandbox\n[Port 1025 / 8025]"]
     end
 
-    UI -- "REST + JWT (Axum)" --> API
+    Browser --> Nginx
+    Nginx -- "HTTP / WebSocket (HMR)" --> UI
+    Nginx -- "REST API /ws /scalar" --> API
+    Nginx -- "/mailhog/" --> MailHog
     API -- "MongoDB BSON Driver" --> Mongo
     API -- "AMQP Event Publishing" --> RMQ
     RMQ -- "Consume Queues" --> Worker
@@ -61,7 +70,11 @@ flowchart TD
 
 | Layer | Technology | Version | Purpose |
 | :--- | :--- | :--- | :--- |
+| **Reverse Proxy** | Nginx | Alpine | Unified entry point on port 80, reverse proxying frontend, API, WebSockets, and MailHog |
 | **Frontend** | React, TypeScript, Vite | 18.x / 5.x | Modern reactive SPA, Zustand stores, Tailwind UI |
+| **Frontend Runtime**| Bun | 1.x | Ultra-fast JavaScript runtime for scripts and testing |
+| **Package Manager** | pnpm | 9.x+ / 11.x | Fast, disk space efficient package manager (`pnpm-lock.yaml`) |
+| **Frontend Linter** | oxlint | Latest | High-performance Rust-based linter with strict zero-warning policy |
 | **Canvas Engine** | HTML5 Canvas 2D | Native | Spatial indexing (`rbush`), smooth pen (`perfect-freehand`) |
 | **Backend API** | Rust (Axum, Tokio, Tower) | 2021 edition | High-throughput, memory-safe asynchronous REST API |
 | **Database** | MongoDB | 7.0 | Document store for users, boards, scenes, and groups |
@@ -77,7 +90,8 @@ Ensure the following tools are installed on your workstation:
 
 - **Docker Desktop** (or Docker Engine 24+ & Docker Compose v2)
 - **Rust Toolchain** 1.78+ (`rustup`, `cargo`, `clippy`, `rustfmt`)
-- **Node.js** 18+ & **npm** 9+
+- **Bun** 1.1+ (JavaScript/TypeScript runtime)
+- **pnpm** 9+ (Node package manager)
 - **Git**
 
 ---
@@ -118,22 +132,22 @@ cargo test
 cargo run
 ```
 
-#### 4. Run Frontend (React + Vite)
+#### 4. Run Frontend (React + Vite with Bun & pnpm)
 ```bash
 cd web
 
-# Install dependencies
-npm install
+# Install dependencies using pnpm
+pnpm install
 
-# Start Vite dev server
-npm run dev
+# Start Vite dev server via Bun
+bun run dev
 ```
 
 ---
 
 ### Option B: Full Docker Compose Environment
 
-To run the entire application ecosystem fully containerized:
+To run the entire application ecosystem fully containerized behind the Nginx reverse proxy:
 
 ```bash
 # Build and run all services
@@ -147,12 +161,13 @@ docker compose up -d
 
 | Service | Port | URL | Description |
 | :--- | :--- | :--- | :--- |
-| **Frontend Web App** | `3000` | [http://localhost:3000](http://localhost:3000) | Main user application |
-| **Backend REST API** | `8080` | [http://localhost:8080](http://localhost:8080) | Axum backend server |
-| **Scalar API Reference** | `8080` | [http://localhost:8080/scalar](http://localhost:8080/scalar) | Interactive API docs (Dev mode) |
-| **MailHog UI** | `8025` | [http://localhost:8025](http://localhost:8025) | Local inbox for magic links |
-| **RabbitMQ Management**| `15672`| [http://localhost:15672](http://localhost:15672)| AMQP dashboard (`guest`/`guest`) |
-| **MongoDB** | `27017`| `mongodb://localhost:27017` | Database port |
+| **DrawIt Web Application (Nginx)** | `80` | [http://localhost](http://localhost) | Unified reverse proxy serving frontend and API |
+| **Frontend Web App (Direct Dev)** | `3000` | [http://localhost:3000](http://localhost:3000) | Vite dev server with WebSocket hot reload |
+| **Backend REST API (Direct Dev)** | `8080` | [http://localhost:8080](http://localhost:8080) | Axum backend server |
+| **Scalar API Reference** | `80` / `8080` | [http://localhost/scalar](http://localhost/scalar) | Interactive API docs (Dev mode) |
+| **MailHog Web UI** | `80` / `8025` | [http://localhost/mailhog/](http://localhost/mailhog/) or `:8025` | Local inbox for verification & reset emails |
+| **RabbitMQ Management** | `15672` | [http://localhost:15672](http://localhost:15672) | AMQP dashboard (`guest`/`guest`) |
+| **MongoDB** | `27017` | `mongodb://localhost:27017` | Database port |
 
 ---
 
@@ -214,18 +229,21 @@ web/
 ```
 
 ### Quality & Linting Commands
-Before submitting frontend changes:
+Before submitting frontend changes, ensure all checks pass with zero warnings:
 ```bash
 cd web
 
-# Linting check
-npm run lint
+# 1. Lint and auto-fix with oxlint
+pnpm exec oxlint --fix
 
-# Unit & Integration tests
-npm run test
+# 2. Strict lint gate (zero warnings allowed)
+pnpm exec oxlint --deny-warnings --format=agent
 
-# Production build verification
-npm run build
+# 3. Unit & Integration test suite (Vitest via Bun)
+bun run test
+
+# 4. Production build & TypeScript type-check
+bun --bun run build
 ```
 
 ---
@@ -234,7 +252,7 @@ npm run build
 
 DrawIt uses [Scalar](https://scalar.com/) integrated with [Utoipa](https://github.com/juhaku/utoipa) for API specifications.
 
-- Route: `/scalar` (e.g., `http://localhost:8080/scalar`)
+- Route: `/scalar` (accessible via Nginx at `http://localhost/scalar` or directly at `http://localhost:8080/scalar`)
 - Environment gating: Strictly active when `APP_ENV=development`. In production, the route is not mounted and responds with `404 Not Found`.
 - When adding or modifying endpoints:
   1. Add `#[utoipa::path(...)]` attributes to your handler in `api/src/routes/`.
@@ -247,17 +265,39 @@ DrawIt uses [Scalar](https://scalar.com/) integrated with [Utoipa](https://githu
 
 1. **RFC 7807 Error Responses**: All API errors must return structured `ProblemDetails` format (`application/problem+json`).
 2. **Explicit Type Safety**: Strict TypeScript on frontend (`noImplicitAny`), comprehensive typing on Rust structs.
-3. **Optimistic Concurrency**: Boards and scene updates must respect revision increments to prevent lost updates.
-4. **Decoupled Architecture**: Background tasks (such as verification emails) must always be published to RabbitMQ and consumed by the async worker.
-5. **Security First**: Passwords must be hashed using Argon2id. Tokens must use HMAC-SHA256 with key rotation.
+3. **Node/TypeScript Tooling Standard**:
+   - **Runtime: Bun.** Run scripts and TS/JS files via `bun run <script>`, `bun --bun run <script>`, or `bun <file.ts>`.
+   - **Package Manager: pnpm.** Manage dependencies strictly with `pnpm install`, `pnpm add`, `pnpm remove`, and `pnpm exec`.
+   - Never commit `package-lock.json` or `yarn.lock`; the single canonical lockfile is `pnpm-lock.yaml`.
+   - Run tests with `bun run test` (Vitest script), never bare `bun test`.
+4. **Optimistic Concurrency**: Boards and scene updates must respect revision increments to prevent lost updates.
+5. **Decoupled Architecture**: Background tasks (such as email verification and password reset dispatch) must always be published to RabbitMQ and consumed by the async worker.
+6. **Authentication & Password Security**:
+   - Passwords must be hashed using Argon2id.
+   - Enforce the 5-point password complexity policy (min. 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special character) across both backend and frontend.
+   - Email verification and password reset tokens must be cryptographically random and stored as SHA-256 hashes with TTL indexes in MongoDB.
+   - Enforce 90-second resend cooldowns returning RFC 7807 Problem Details (HTTP 429) accompanied by a `Retry-After` header.
 
 ---
 
 ## 🧪 Testing & Quality Assurance
 
-- **Backend**: Run `cargo test` to execute unit tests, security suites, and integration tests.
-- **Frontend**: Run `npm run test` to execute Vitest suites.
-- **Continuous Integration (CI)**: GitHub Actions enforces `cargo fmt`, `cargo clippy`, `cargo test`, `npm run lint`, and `npm run test` on every PR.
+Every pull request is automatically validated by our CI DevSecOps pipeline (`.github/workflows/ci.yml`):
+
+- **Backend**:
+  ```bash
+  cargo fmt --manifest-path api/Cargo.toml -- --check
+  cargo clippy --manifest-path api/Cargo.toml -- -D warnings
+  cargo test --manifest-path api/Cargo.toml
+  ```
+- **Frontend**:
+  ```bash
+  cd web
+  pnpm exec oxlint --deny-warnings --format=agent
+  bun --bun run build
+  bun run test
+  ```
+- **Continuous Integration (CI)**: GitHub Actions enforces these exact checks on every push and PR to `main`.
 
 ---
 
