@@ -24,6 +24,25 @@ import {
   Eraser,
   Boxes,
   X,
+  Globe,
+  Smartphone,
+  Laptop,
+  User,
+  Server,
+  Cpu,
+  Cog,
+  Network,
+  GitFork,
+  Database,
+  Layers,
+  HardDrive,
+  ListOrdered,
+  Activity,
+  Cloud,
+  Radio,
+  Shield,
+  Box,
+  Orbit,
 } from 'lucide-react';
 import { CanvasEngine, Tool } from './engine/CanvasEngine';
 import { CanvasElement, ElementStyle } from './engine/types';
@@ -58,6 +77,28 @@ const CATEGORY_LABELS: Record<ComponentCategory, string> = {
   data: 'Data & Storage',
   messaging: 'Messaging & Streaming',
   infra: 'Infrastructure & Network',
+};
+
+const COMPONENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  browser: Globe,
+  mobile: Smartphone,
+  laptop: Laptop,
+  user: User,
+  server: Server,
+  microservice: Cpu,
+  worker: Cog,
+  api_gateway: Network,
+  load_balancer: GitFork,
+  database: Database,
+  cache: Layers,
+  object_storage: HardDrive,
+  queue: ListOrdered,
+  event_stream: Activity,
+  cloud: Cloud,
+  cdn: Radio,
+  firewall: Shield,
+  container: Box,
+  kubernetes: Orbit,
 };
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
@@ -833,18 +874,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                     {CATEGORY_LABELS[cat]}
                   </div>
                   <div className="space-y-1">
-                    {items.map((comp) => (
-                      <button
-                        key={comp.key}
-                        onClick={() => handleToolSelect(comp.key as Tool)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center justify-between ${activeTool === comp.key
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-muted/30 hover:bg-muted border-transparent'
+                    {items.map((comp) => {
+                      const Icon = COMPONENT_ICONS[comp.key];
+                      const isSelected = activeTool === comp.key;
+                      return (
+                        <button
+                          key={comp.key}
+                          onClick={() => handleToolSelect(comp.key as Tool)}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-2 ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-muted/30 hover:bg-muted border-transparent text-foreground'
                           }`}
-                      >
-                        <span>{comp.name}</span>
-                      </button>
-                    ))}
+                        >
+                          {Icon && (
+                            <Icon
+                              className={`w-3.5 h-3.5 shrink-0 ${
+                                isSelected ? 'text-primary-foreground' : 'text-primary'
+                              }`}
+                            />
+                          )}
+                          <span className="truncate">{comp.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );

@@ -69,6 +69,7 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
   const style = primary.style;
   const allLocked = selectedElements.every((el) => el.locked);
   const hasArrow = selectedElements.some((el) => el.type === 'arrow');
+  const isTextOnly = selectedElements.every((el) => el.type === 'text');
   const hasTextOrLabel = selectedElements.some(
     (el) => el.type === 'text' || el.type === 'sticky' || Boolean(el.label)
   );
@@ -123,10 +124,10 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
         </div>
       </div>
 
-      {/* Stroke Color */}
+      {/* Text / Stroke Color */}
       <div className="space-y-1.5">
         <label className="text-[11px] font-medium text-muted-foreground block">
-          Stroke Color
+          {isTextOnly ? 'Text Color' : 'Stroke Color'}
         </label>
         <div className="flex items-center gap-1.5 flex-wrap">
           {STROKE_COLORS.map((c) => (
@@ -143,8 +144,38 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
         </div>
       </div>
 
-      {/* Fill Color */}
-      {primary.type !== 'arrow' && primary.type !== 'line' && (
+      {/* Text Size Control for Text elements */}
+      {isTextOnly && onUpdateFontSize && (
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+            <Type className="w-3 h-3" />
+            <span>Text Size</span>
+          </label>
+          <div className="flex rounded-lg border bg-muted/40 p-0.5">
+            {[
+              { label: 'S', size: 14 },
+              { label: 'M', size: 20 },
+              { label: 'L', size: 28 },
+              { label: 'XL', size: 40 },
+            ].map(({ label, size }) => (
+              <button
+                key={label}
+                onClick={() => onUpdateFontSize(size)}
+                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
+                  currentFontSize === size
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fill Color - Hidden for text, arrow and line */}
+      {!isTextOnly && primary.type !== 'arrow' && primary.type !== 'line' && (
         <div className="space-y-1.5">
           <label className="text-[11px] font-medium text-muted-foreground block">
             Fill Color
@@ -172,53 +203,55 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
         </div>
       )}
 
-      {/* Stroke Width & Style */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground block">
-            Width
-          </label>
-          <div className="flex rounded-lg border bg-muted/40 p-0.5">
-            {[1, 2, 4, 6].map((w) => (
-              <button
-                key={w}
-                onClick={() => onUpdateStyle({ strokeWidth: w })}
-                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
-                  style.strokeWidth === w
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {w}px
-              </button>
-            ))}
+      {/* Stroke Width & Style - Hidden for text */}
+      {!isTextOnly && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground block">
+              Width
+            </label>
+            <div className="flex rounded-lg border bg-muted/40 p-0.5">
+              {[1, 2, 4, 6].map((w) => (
+                <button
+                  key={w}
+                  onClick={() => onUpdateStyle({ strokeWidth: w })}
+                  className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
+                    style.strokeWidth === w
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {w}px
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground block">
+              Stroke
+            </label>
+            <div className="flex rounded-lg border bg-muted/40 p-0.5">
+              {(['solid', 'dashed', 'dotted'] as StrokeStyle[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => onUpdateStyle({ strokeStyle: s })}
+                  className={`flex-1 py-1 text-[10px] capitalize rounded font-medium transition-colors ${
+                    style.strokeStyle === s
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {s.slice(0, 4)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground block">
-            Stroke
-          </label>
-          <div className="flex rounded-lg border bg-muted/40 p-0.5">
-            {(['solid', 'dashed', 'dotted'] as StrokeStyle[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => onUpdateStyle({ strokeStyle: s })}
-                className={`flex-1 py-1 text-[10px] capitalize rounded font-medium transition-colors ${
-                  style.strokeStyle === s
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {s.slice(0, 4)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Font / Text Size Control */}
-      {hasTextOrLabel && onUpdateFontSize && (
+      {/* Font / Text Size Control for other elements that have labels */}
+      {!isTextOnly && hasTextOrLabel && onUpdateFontSize && (
         <div className="space-y-1">
           <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
             <Type className="w-3 h-3" />
@@ -271,36 +304,38 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
         </div>
       )}
 
-      {/* Visual Effects (RNF-S05) */}
-      <div className="space-y-1">
-        <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
-          <Sparkles className="w-3 h-3" />
-          <span>Visual Effect</span>
-        </label>
-        <div className="flex rounded-lg border bg-muted/40 p-0.5">
-          {(['none', 'neon', 'shadow'] as const).map((eff) => (
-            <button
-              key={eff}
-              onClick={() =>
-                onUpdateStyle({
-                  effect: {
-                    type: eff,
-                    intensity: eff === 'none' ? 0 : 12,
-                    color: style.strokeColor,
-                  },
-                })
-              }
-              className={`flex-1 py-1 text-[11px] capitalize rounded font-medium transition-colors ${
-                (style.effect?.type || 'none') === eff
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {eff}
-            </button>
-          ))}
+      {/* Visual Effects (RNF-S05) - Hidden for text */}
+      {!isTextOnly && (
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            <span>Visual Effect</span>
+          </label>
+          <div className="flex rounded-lg border bg-muted/40 p-0.5">
+            {(['none', 'neon', 'shadow'] as const).map((eff) => (
+              <button
+                key={eff}
+                onClick={() =>
+                  onUpdateStyle({
+                    effect: {
+                      type: eff,
+                      intensity: eff === 'none' ? 0 : 12,
+                      color: style.strokeColor,
+                    },
+                  })
+                }
+                className={`flex-1 py-1 text-[11px] capitalize rounded font-medium transition-colors ${
+                  (style.effect?.type || 'none') === eff
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {eff}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Opacity Slider */}
       <div className="space-y-1">

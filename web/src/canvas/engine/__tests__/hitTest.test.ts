@@ -190,9 +190,9 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
     expect(hitTestElement({ x: 50, y: 50 }, textEl)).toBe(false);
   });
 
-  it('registers all 20 P0 IT Architecture components across 5 categories', () => {
+  it('registers all IT Architecture components across 5 categories', () => {
     const keys = Object.keys(IT_COMPONENTS);
-    expect(keys.length).toBe(20);
+    expect(keys.length).toBe(19);
     expect(keys).toEqual(
       expect.arrayContaining([
         'browser',
@@ -205,7 +205,6 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
         'api_gateway',
         'load_balancer',
         'database',
-        'nosql',
         'cache',
         'object_storage',
         'queue',

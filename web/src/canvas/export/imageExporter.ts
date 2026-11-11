@@ -143,11 +143,28 @@ export function exportToSvgString(
       case 'component': {
         const comp = el as any;
         const compKey = comp.componentKey || comp.componentType;
-        const def = IT_COMPONENTS[compKey as keyof typeof IT_COMPONENTS];
+        const def =
+          IT_COMPONENTS[compKey as keyof typeof IT_COMPONENTS] ||
+          (compKey === 'nosql' ? IT_COMPONENTS.database : undefined);
         const labelText = comp.label || def?.name || '';
         const fontSize = (el as any).fontSize || 12;
+        const radius = Math.min(12, Math.min(el.width, el.height) * 0.18);
         svgContent += `  <g transform="translate(${el.x}, ${el.y})">\n`;
-        svgContent += `    <rect width="${el.width}" height="${el.height}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        svgContent += `    <rect width="${el.width}" height="${el.height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (def && Array.isArray(def.iconNodes)) {
+          const iconSize = Math.min(el.width, el.height) * 0.46;
+          const scale = iconSize / 24;
+          const iconX = (el.width - iconSize) / 2;
+          const iconY = (el.height - iconSize) / 2;
+          svgContent += `    <g transform="translate(${iconX}, ${iconY}) scale(${scale})" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}">\n`;
+          for (const [tag, attrs] of def.iconNodes) {
+            const attrStr = Object.entries(attrs)
+              .map(([k, v]) => `${k}="${v}"`)
+              .join(' ');
+            svgContent += `      <${tag} ${attrStr} />\n`;
+          }
+          svgContent += `    </g>\n`;
+        }
         if (labelText) {
           svgContent += `    <text x="${el.width / 2}" y="${el.height + 16}" font-family="sans-serif" font-size="${fontSize}" font-weight="600" text-anchor="middle" fill="${stroke}">${labelText}</text>\n`;
         }

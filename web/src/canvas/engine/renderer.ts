@@ -423,7 +423,9 @@ export class CanvasRenderer {
       }
 
       case 'component': {
-        const comp = IT_COMPONENTS[(element as any).componentKey];
+        const comp =
+          IT_COMPONENTS[(element as any).componentKey] ||
+          ((element as any).componentKey === 'nosql' ? IT_COMPONENTS.database : undefined);
         if (comp) {
           comp.draw(ctx, element.x, element.y, element.width, element.height);
         } else {
