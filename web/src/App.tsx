@@ -35,11 +35,24 @@ export const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-background text-foreground gap-3">
-        <Loader2 className="w-7 h-7 animate-spin text-primary" />
-        <span className="text-xs font-medium text-muted-foreground">
-          Initializing DrawIt workspace...
-        </span>
+      <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-background text-foreground gap-4">
+        <div className="relative flex items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl bg-[#0f40bd] flex items-center justify-center shadow-xl shadow-blue-500/20 p-2.5 ring-4 ring-[#0f40bd]/15">
+            <img
+              src="/brand/cup-transparent.png"
+              alt="Drawit"
+              className="w-11 h-11 object-contain animate-pulse"
+            />
+          </div>
+          <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#84ff00] opacity-75" />
+            <span className="relative inline-flex rounded-full h-4 w-4 bg-[#84ff00] border-2 border-background" />
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+          <span>Initializing Drawit workspace...</span>
+        </div>
       </div>
     );
   }

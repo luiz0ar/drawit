@@ -122,7 +122,11 @@ export class CanvasRenderer {
    * Renders an arrow connector with straight, orthogonal (Manhattan), or curved routing,
    * featuring Excalidraw-style open chevron arrowheads and natural quadratic curvature.
    */
-  public renderArrow(element: CanvasElement, theme: 'dark' | 'light' = 'light') {
+  public renderArrow(
+    element: CanvasElement,
+    theme: 'dark' | 'light' = 'light',
+    isPendingErasure = false
+  ) {
     const ctx = this.ctx;
     const arrow = element as any;
     const pts: { x: number; y: number }[] = arrow.points || [];
@@ -132,7 +136,7 @@ export class CanvasRenderer {
     this.applyEffect(element);
     ctx.strokeStyle = element.style.strokeColor;
     ctx.lineWidth = element.style.strokeWidth;
-    ctx.globalAlpha = element.style.opacity / 100;
+    ctx.globalAlpha = isPendingErasure ? 0.18 : element.style.opacity / 100;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -349,9 +353,9 @@ export class CanvasRenderer {
   /**
    * Renders a single element on the canvas.
    */
-  public renderElement(element: CanvasElement) {
+  public renderElement(element: CanvasElement, isPendingErasure = false) {
     if (element.type === 'arrow') {
-      this.renderArrow(element);
+      this.renderArrow(element, 'light', isPendingErasure);
       return;
     }
 
@@ -372,7 +376,7 @@ export class CanvasRenderer {
     this.applyEffect(element);
     ctx.strokeStyle = element.style.strokeColor;
     ctx.lineWidth = element.style.strokeWidth;
-    ctx.globalAlpha = element.style.opacity / 100;
+    ctx.globalAlpha = isPendingErasure ? 0.18 : element.style.opacity / 100;
 
     if (element.style.strokeStyle === 'dashed') {
       ctx.setLineDash([8, 6]);

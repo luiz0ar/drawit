@@ -8,7 +8,6 @@ import {
   Menu,
   Edit2,
   Folder,
-  LayoutGrid,
 } from 'lucide-react';
 import { SaveStatus } from '../editor/useAutosave';
 import { validateBoardTitle } from './titleGenerator';
@@ -74,9 +73,16 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
       <button
         onClick={() => navigate('/boards')}
         title="Back to Boards Dashboard"
-        className="p-2 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors flex items-center gap-1.5 text-xs font-medium"
+        className="px-2.5 py-1.5 rounded-lg border bg-card/95 backdrop-blur shadow-sm hover:bg-muted text-foreground transition-colors flex items-center gap-2 text-xs font-semibold group"
       >
-        <LayoutGrid className="w-4 h-4 text-primary" />
+        <div className="w-5 h-5 rounded-md bg-[#0f40bd] flex items-center justify-center p-0.5 shrink-0 transition-transform group-hover:scale-105">
+          <img
+            src="/brand/cup-transparent.png"
+            alt="Drawit"
+            className="w-4 h-4 object-contain"
+          />
+        </div>
+        <span className="font-bold tracking-tight text-xs hidden sm:inline">Drawit</span>
       </button>
 
       {/* Sidebar toggle */}

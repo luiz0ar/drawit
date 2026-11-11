@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Layers,
   User,
   Mail,
   Lock,
@@ -80,7 +79,13 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col justify-center items-center bg-background text-foreground px-4 relative">
+    <div className="min-h-screen w-full flex flex-col justify-center items-center bg-background text-foreground px-4 relative overflow-hidden">
+      {/* Background ambient decorative glow using brand colors */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#0f40bd]/10 dark:bg-[#0f40bd]/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-[#84ff00]/10 dark:bg-[#84ff00]/15 rounded-full blur-3xl" />
+      </div>
+
       {/* Theme Toggle */}
       <div className="absolute top-4 right-4">
         <button
@@ -98,14 +103,23 @@ export const RegisterPage: React.FC = () => {
       </div>
 
       <div className="w-full max-w-md bg-card border rounded-2xl shadow-xl p-8 space-y-6">
-        <div className="flex flex-col items-center text-center space-y-2">
-          <div className="p-3 rounded-xl bg-primary/10 text-primary">
-            <Layers className="w-7 h-7" />
+        <div className="flex flex-col items-center text-center space-y-3">
+          <div className="relative group cursor-pointer">
+            <div className="w-16 h-16 rounded-2xl bg-[#0f40bd] flex items-center justify-center shadow-lg shadow-blue-600/25 ring-4 ring-[#0f40bd]/15 p-2.5 transition-transform duration-200 group-hover:scale-105">
+              <img
+                src="/brand/cup-transparent.png"
+                alt="Drawit Mascot"
+                className="w-11 h-11 object-contain drop-shadow"
+              />
+            </div>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Create Account</h1>
-          <p className="text-xs text-muted-foreground">
-            Get started with your personal System Design workspace
-          </p>
+
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight">Create Account</h1>
+            <p className="text-xs text-muted-foreground">
+              Get started with your personal System Design workspace
+            </p>
+          </div>
         </div>
 
         {error && (
@@ -252,6 +266,11 @@ export const RegisterPage: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      <footer className="mt-8 text-center text-xs text-muted-foreground flex items-center gap-2">
+        <img src="/brand/cup-transparent.png" alt="Drawit" className="w-4 h-4 object-contain opacity-75" />
+        <span>Drawit &mdash; Modern Whiteboard for System Design</span>
+      </footer>
     </div>
   );
 };

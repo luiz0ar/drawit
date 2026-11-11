@@ -27,6 +27,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.playwright-mcp/
 
 .npm
 dist/
@@ -48,3 +49,4 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.playwright-mcp/

@@ -19,6 +19,12 @@ import { CanvasRenderer } from './renderer';
 import { findClosestAnchor, computeAnchorWorldPosition, AnchorPosition } from './anchors';
 import { IT_COMPONENTS } from './components';
 import { normalizeFreehandPoints, scaleFreehandPoints } from './freehand';
+import {
+  hitTestSegmentVsElement,
+  detachBoundArrows,
+  renderEraserTrail,
+  ERASER_CURSOR,
+} from './eraser';
 
 export type Tool =
   | 'select'
@@ -80,6 +86,9 @@ export class CanvasEngine {
   private activeArrowHandle: ArrowHandle | null = null;
   private activeArrowInitial: CanvasElement | null = null;
   private isSpacePressed = false;
+  private elementsPendingErasure: Set<string> = new Set();
+  private eraserTrail: WorldPoint[] = [];
+  private isErasing = false;
 
   private hoveredAnchor: { elementId: string; anchor: AnchorPosition; point: WorldPoint } | null =
     null;
@@ -167,6 +176,12 @@ export class CanvasEngine {
   }
 
   public setTool(tool: Tool) {
+    if (this.isErasing && tool !== 'eraser') {
+      this.isErasing = false;
+      this.elementsPendingErasure.clear();
+      this.eraserTrail = [];
+      this.isDirty = true;
+    }
     this.activeTool = tool;
     this.updateCursor(this.lastScreenPoint, screenToWorld(this.lastScreenPoint, this.viewport));
     this.callbacks.onToolChange?.(tool);
@@ -420,23 +435,7 @@ export class CanvasEngine {
 
     if (deletedMap.size === 0) return;
 
-    for (const el of this.elements) {
-      if (el.type === 'arrow') {
-        const arrow = el as any;
-        if (arrow.startBinding && deletedMap.has(arrow.startBinding.elementId)) {
-          const shape = deletedMap.get(arrow.startBinding.elementId)!;
-          const pos = computeAnchorWorldPosition(shape, arrow.startBinding.anchor);
-          arrow.points[0] = { x: pos.x, y: pos.y };
-          arrow.startBinding = undefined;
-        }
-        if (arrow.endBinding && deletedMap.has(arrow.endBinding.elementId)) {
-          const shape = deletedMap.get(arrow.endBinding.elementId)!;
-          const pos = computeAnchorWorldPosition(shape, arrow.endBinding.anchor);
-          arrow.points[arrow.points.length - 1] = { x: pos.x, y: pos.y };
-          arrow.endBinding = undefined;
-        }
-      }
-    }
+    detachBoundArrows(this.elements, new Set(deletedMap.keys()));
 
     this.elements = this.elements.filter((el) => !deletedMap.has(el.id));
     this.selectedIds.clear();
@@ -591,10 +590,11 @@ export class CanvasEngine {
     // 2. Elements
     this.renderer.applyViewport(this.viewport);
     for (const el of this.elements) {
+      const isPendingErasure = this.elementsPendingErasure.has(el.id);
       if (el.type === 'arrow') {
-        this.renderer.renderArrow(el, this.theme);
+        this.renderer.renderArrow(el, this.theme, isPendingErasure);
       } else {
-        this.renderer.renderElement(el);
+        this.renderer.renderElement(el, isPendingErasure);
       }
     }
 
@@ -628,6 +628,11 @@ export class CanvasEngine {
     // 6. Area Selection Marquee Rectangle
     if (this.isMarqueeSelecting && this.marqueeBox) {
       this.renderer.renderMarquee(this.marqueeBox, this.viewport);
+    }
+
+    // 7. Excalidraw-Style Eraser Trail
+    if (this.eraserTrail.length > 1) {
+      renderEraserTrail(this.ctx, this.eraserTrail, this.viewport);
     }
   }
 
@@ -711,7 +716,7 @@ export class CanvasEngine {
     }
 
     if (this.activeTool === 'eraser') {
-      this.canvas.style.cursor = 'pointer';
+      this.canvas.style.cursor = ERASER_CURSOR;
       return;
     }
 
@@ -848,19 +853,21 @@ export class CanvasEngine {
 
     if (e.button !== 0) return;
 
-    // Eraser tool: click to delete hit element
+    // Eraser tool: begin continuous drag-erase or single-click erase (Excalidraw style)
     if (this.activeTool === 'eraser') {
+      this.isErasing = true;
+      this.elementsPendingErasure.clear();
+      this.eraserTrail = [this.startWorldPoint];
+
+      // Check if initial click hit any non-locked element
       for (let i = this.elements.length - 1; i >= 0; i--) {
-        if (hitTestElement(this.startWorldPoint, this.elements[i])) {
-          const hit = this.elements[i];
-          if (!hit.locked) {
-            this.selectedIds.clear();
-            this.selectedIds.add(hit.id);
-            this.deleteSelected();
-          }
+        const el = this.elements[i];
+        if (!el.locked && hitTestElement(this.startWorldPoint, el)) {
+          this.elementsPendingErasure.add(el.id);
           break;
         }
       }
+      this.isDirty = true;
       return;
     }
 
@@ -1235,6 +1242,29 @@ export class CanvasEngine {
       return;
     }
 
+    // Excalidraw-Style Continuous Eraser Drag
+    if (this.isErasing) {
+      const prevWorld =
+        this.eraserTrail.length > 0
+          ? this.eraserTrail[this.eraserTrail.length - 1]
+          : this.startWorldPoint;
+      this.eraserTrail.push(currentWorld);
+      if (this.eraserTrail.length > 50) {
+        this.eraserTrail.shift();
+      }
+
+      for (const el of this.elements) {
+        if (!el.locked && !this.elementsPendingErasure.has(el.id)) {
+          if (hitTestSegmentVsElement(prevWorld, currentWorld, el)) {
+            this.elementsPendingErasure.add(el.id);
+          }
+        }
+      }
+
+      this.isDirty = true;
+      return;
+    }
+
     // Marquee area selection
     if (this.isMarqueeSelecting && this.marqueeBox) {
       this.marqueeBox.currentX = currentWorld.x;
@@ -1520,6 +1550,29 @@ export class CanvasEngine {
     this.hoveredAnchor = null;
     this.alignmentGuides = [];
 
+    // Excalidraw-Style Atomic Commit for Eraser Gesture
+    if (this.isErasing) {
+      this.isErasing = false;
+      const toDelete = new Set(this.elementsPendingErasure);
+      this.elementsPendingErasure.clear();
+      this.eraserTrail = [];
+
+      if (toDelete.size > 0) {
+        this.pushHistorySnapshot();
+        detachBoundArrows(this.elements, toDelete);
+        this.elements = this.elements.filter((el) => !toDelete.has(el.id));
+        for (const id of toDelete) {
+          this.selectedIds.delete(id);
+        }
+        this.isDirty = true;
+        this.notifySelectionChange();
+        this.callbacks.onElementsChange?.(this.elements);
+      } else {
+        this.isDirty = true;
+      }
+      return;
+    }
+
     if (this.isMarqueeSelecting) {
       this.isMarqueeSelecting = false;
       this.marqueeBox = null;
@@ -1680,6 +1733,13 @@ export class CanvasEngine {
     if (e.key === 'p' || e.key === 'P') this.setTool('freehand');
     if (e.key === 'e' || e.key === 'E') this.setTool('eraser');
     if (e.key === 'Escape') {
+      if (this.isErasing) {
+        this.isErasing = false;
+        this.elementsPendingErasure.clear();
+        this.eraserTrail = [];
+        this.isDirty = true;
+        return;
+      }
       if (this.activeTool !== 'select') {
         this.setTool('select');
       }

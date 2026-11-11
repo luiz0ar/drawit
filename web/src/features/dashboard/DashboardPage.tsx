@@ -402,11 +402,18 @@ export const DashboardPage: React.FC = () => {
       {/* Left Navigation Sidebar */}
       <aside className="w-64 border-r bg-card flex flex-col shrink-0">
         <div className="p-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-              <Layers className="w-5 h-5" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#0f40bd] flex items-center justify-center shadow-sm shrink-0 p-1">
+              <img
+                src="/brand/cup-transparent.png"
+                alt="Drawit"
+                className="w-5 h-5 object-contain"
+              />
             </div>
-            <span className="font-bold text-base tracking-tight">Drawit</span>
+            <div className="flex flex-col">
+              <span className="font-bold text-sm tracking-tight leading-none text-foreground">Drawit</span>
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mt-0.5">Workspace</span>
+            </div>
           </div>
           <span className="text-xs text-muted-foreground font-mono truncate max-w-[100px]">
             {user?.username}
@@ -770,9 +777,15 @@ export const DashboardPage: React.FC = () => {
         {/* Boards Display */}
         <div className="flex-1 overflow-y-auto px-6 pb-8">
           {boards.length === 0 ? (
-            <div className="h-64 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-3">
-              <FileText className="w-8 h-8 text-muted-foreground" />
-              <div className="space-y-1">
+            <div className="h-72 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-3 bg-muted/10">
+              <div className="w-16 h-16 rounded-2xl bg-[#0f40bd]/10 dark:bg-[#0f40bd]/20 border border-[#0f40bd]/20 flex items-center justify-center p-3 mb-1">
+                <img
+                  src="/brand/cup-transparent.png"
+                  alt="Drawit Mascot"
+                  className="w-10 h-10 object-contain drop-shadow"
+                />
+              </div>
+              <div className="space-y-1 max-w-sm">
                 <p className="text-sm font-semibold text-foreground">
                   No boards found
                 </p>
@@ -785,7 +798,7 @@ export const DashboardPage: React.FC = () => {
               {navFilter.type !== 'trash' && (
                 <button
                   onClick={handleCreateNewBoard}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-shadow shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Create Board</span>
