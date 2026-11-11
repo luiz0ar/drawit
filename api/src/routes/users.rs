@@ -28,6 +28,8 @@ pub async fn me(
     Ok(Json(UserDto {
         id: user.id,
         username: user.username,
+        email: user.email,
+        email_verified: user.email_verified,
         preferences: serde_json::to_value(user.preferences).unwrap(),
     }))
 }
@@ -63,6 +65,8 @@ pub async fn update_preferences(
     Ok(Json(UserDto {
         id: user.id,
         username: user.username,
+        email: user.email,
+        email_verified: user.email_verified,
         preferences: serde_json::to_value(user.preferences).unwrap(),
     }))
 }

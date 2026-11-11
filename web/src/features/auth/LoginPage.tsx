@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Layers,
-  User,
+  Mail,
   Lock,
   ArrowRight,
   Loader2,
@@ -16,32 +16,34 @@ import { Link, navigate } from '../../lib/router';
 import { useTheme } from '../../context/ThemeContext';
 import { ApiError } from '../../lib/api';
 
-const REMEMBERED_USERNAME_KEY = 'drawit_remembered_username';
+const REMEMBERED_EMAIL_KEY = 'drawit_remembered_email';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuthStore();
   const { resolvedTheme, setTheme } = useTheme();
 
-  const [username, setUsername] = useState(() => {
+  const [email, setEmail] = useState(() => {
     if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem(REMEMBERED_USERNAME_KEY) || '';
+    return window.localStorage.getItem(REMEMBERED_EMAIL_KEY) || '';
   });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return Boolean(window.localStorage.getItem(REMEMBERED_USERNAME_KEY));
+    return Boolean(window.localStorage.getItem(REMEMBERED_EMAIL_KEY));
   });
   const [error, setError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setUnverifiedEmail(null);
 
-    const trimmedUser = username.trim();
-    if (trimmedUser.length < 3 || trimmedUser.length > 30) {
-      setError('Username must be between 3 and 30 characters.');
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('Please provide a valid email address.');
       return;
     }
     if (password.length < 6) {
@@ -51,22 +53,27 @@ export const LoginPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await login(trimmedUser, password);
+      await login(trimmedEmail, password);
 
       // Handle Remember Me persistence
       if (rememberMe) {
-        window.localStorage.setItem(REMEMBERED_USERNAME_KEY, trimmedUser);
+        window.localStorage.setItem(REMEMBERED_EMAIL_KEY, trimmedEmail);
       } else {
-        window.localStorage.removeItem(REMEMBERED_USERNAME_KEY);
+        window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
       }
 
       navigate('/boards', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
-        const paramErr =
-          err.problem.invalidParams?.[0]?.reason ||
-          err.problem.invalid_params?.[0]?.reason;
-        setError(paramErr || err.problem.detail || err.message);
+        if (err.problem.code === 'EMAIL_NOT_VERIFIED') {
+          setUnverifiedEmail(trimmedEmail);
+          setError('Your email address has not been verified yet.');
+        } else {
+          const paramErr =
+            err.problem.invalidParams?.[0]?.reason ||
+            err.problem.invalid_params?.[0]?.reason;
+          setError(paramErr || err.problem.detail || err.message);
+        }
       } else {
         setError(err instanceof Error ? err.message : 'Failed to sign in.');
       }
@@ -107,32 +114,49 @@ export const LoginPage: React.FC = () => {
         {error && (
           <div
             role="alert"
-            className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs"
+            className="flex flex-col gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs"
           >
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+            {unverifiedEmail && (
+              <div className="pt-1 border-t border-destructive/20 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/check-email?email=${encodeURIComponent(unverifiedEmail)}`
+                    )
+                  }
+                  className="font-semibold underline hover:opacity-80"
+                >
+                  Resend verification email &rarr;
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label
-              htmlFor="login-username"
+              htmlFor="login-email"
               className="text-xs font-semibold text-foreground block"
             >
-              Username
+              Email
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <Mail className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
               <input
-                id="login-username"
-                name="username"
-                type="text"
-                autoComplete="username"
+                id="login-email"
+                name="email"
+                type="email"
+                autoComplete="email"
                 required
-                placeholder="Enter your username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>

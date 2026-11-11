@@ -24,6 +24,11 @@ blake2 = "0.10"
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "7.1", features = ["axum"] }
 dotenvy = "0.15"
+lapin = "2.3"
+futures-lite = "2.3"
+lettre = { version = "0.11", default-features = false, features = ["builder", "tokio1-rustls-tls", "smtp-transport"] }
+base64 = "0.22"
+async-trait = "0.1"
 
 [dev-dependencies]
 tower = { version = "0.4", features = ["util"] }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Layers,
   User,
+  Mail,
   Lock,
   ArrowRight,
   Loader2,
@@ -21,6 +22,7 @@ export const RegisterPage: React.FC = () => {
   const { resolvedTheme, setTheme } = useTheme();
 
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +34,8 @@ export const RegisterPage: React.FC = () => {
     setError(null);
 
     const trimmedUser = username.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+
     if (trimmedUser.length < 3 || trimmedUser.length > 30) {
       setError('Username must be between 3 and 30 characters.');
       return;
@@ -40,19 +44,27 @@ export const RegisterPage: React.FC = () => {
       setError('Username can only contain letters, numbers, dots, hyphens, and underscores.');
       return;
     }
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('Please provide a valid email address.');
+      return;
+    }
     if (password.length < 6 || password.length > 128) {
       setError('Password must be between 6 and 128 characters.');
       return;
     }
-    if (confirmPassword && password !== confirmPassword) {
+    if (!confirmPassword) {
+      setError('Please confirm your password.');
+      return;
+    }
+    if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await register(trimmedUser, password);
-      navigate('/boards', { replace: true });
+      await register(trimmedUser, trimmedEmail, password, confirmPassword);
+      navigate(`/check-email?email=${encodeURIComponent(trimmedEmail)}`, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         const paramErr =
@@ -125,6 +137,29 @@ export const RegisterPage: React.FC = () => {
                 placeholder="Choose a unique username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="register-email"
+              className="text-xs font-semibold text-foreground block"
+            >
+              Email
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                id="register-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>

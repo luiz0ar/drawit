@@ -91,6 +91,12 @@ pub enum AppError {
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
+    #[error("Email not verified for {email}")]
+    EmailNotVerified { email: String },
+
+    #[error("Too many requests, retry after {retry_after_seconds}s")]
+    TooManyRequests { retry_after_seconds: u64 },
+
     #[error("Internal server error: {0}")]
     Internal(String),
 }
@@ -135,6 +141,37 @@ impl IntoResponse for AppError {
                 StatusCode::FORBIDDEN,
                 ProblemDetails::new(403, "FORBIDDEN", "Forbidden", detail, ""),
             ),
+            AppError::EmailNotVerified { email } => (
+                StatusCode::FORBIDDEN,
+                ProblemDetails::new(
+                    403,
+                    "EMAIL_NOT_VERIFIED",
+                    "Email Not Verified",
+                    "Please verify your email address before logging in.",
+                    "",
+                )
+                .with_extension("email", serde_json::json!(email)),
+            ),
+            AppError::TooManyRequests { retry_after_seconds } => {
+                let problem = ProblemDetails::new(
+                    429,
+                    "TOO_MANY_REQUESTS",
+                    "Too Many Requests",
+                    format!("Please wait {} seconds before retrying.", retry_after_seconds),
+                    "",
+                )
+                .with_extension("retryAfter", serde_json::json!(retry_after_seconds));
+
+                return (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    [
+                        ("content-type", "application/problem+json".to_string()),
+                        ("retry-after", retry_after_seconds.to_string()),
+                    ],
+                    Json(problem),
+                )
+                    .into_response();
+            }
             AppError::Internal(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ProblemDetails::new(500, "INTERNAL_ERROR", "Internal Server Error", err, ""),

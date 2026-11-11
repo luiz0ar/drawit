@@ -2,13 +2,18 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::bson_date::flexible_datetime;
+use crate::models::bson_date::{flexible_datetime, flexible_datetime_option};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     #[serde(rename = "_id")]
     pub id: String,
     pub username: String,
+    pub email: String,
+    #[serde(default)]
+    pub email_verified: bool,
+    #[serde(default, with = "flexible_datetime_option")]
+    pub email_verified_at: Option<DateTime<Utc>>,
     pub password_hash: String,
     #[serde(default)]
     pub preferences: UserPreferences,
@@ -34,11 +39,14 @@ impl Default for UserPreferences {
 }
 
 impl User {
-    pub fn new(username: String, password_hash: String) -> Self {
+    pub fn new(username: String, email: String, password_hash: String) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
             username,
+            email,
+            email_verified: false,
+            email_verified_at: None,
             password_hash,
             preferences: UserPreferences::default(),
             created_at: now,

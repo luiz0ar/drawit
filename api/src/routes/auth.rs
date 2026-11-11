@@ -6,7 +6,10 @@ use axum::{
 };
 
 use crate::{
-    dto::{ChangePasswordRequest, LoginRequest, RegisterRequest},
+    dto::{
+        ChangePasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
+        VerifyEmailRequest,
+    },
     error::AppError,
     services::{AuthService, Claims},
     AppState,
@@ -42,25 +45,13 @@ fn build_clear_refresh_cookie() -> String {
 
 pub async fn register(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Json(req): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service = AuthService::new(&state.db, &state.config);
-    let user_agent = headers
-        .get(header::USER_AGENT)
-        .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
+    let auth_service =
+        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let response = auth_service.register(req).await?;
 
-    let (response, raw_refresh_token) = auth_service.register(req, user_agent).await?;
-    let cookie_header = build_refresh_cookie(
-        &raw_refresh_token,
-        state.config.refresh_token_expiration_days,
-    );
-
-    Ok((
-        StatusCode::CREATED,
-        [(header::SET_COOKIE, cookie_header)],
-        Json(response),
-    ))
+    Ok((StatusCode::ACCEPTED, Json(response)))
 }
 
 pub async fn login(
@@ -68,7 +59,8 @@ pub async fn login(
     headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service = AuthService::new(&state.db, &state.config);
+    let auth_service =
+        AuthService::new(&state.db, &state.config, state.verification_service.clone());
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
@@ -96,21 +88,57 @@ pub async fn login(
     ))
 }
 
+pub async fn verify_email(
+    State(state): State<AppState>,
+    Json(req): Json<VerifyEmailRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    state.verification_service.verify_token(&req.token).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "message": "Email address verified successfully. You may now log in."
+        })),
+    ))
+}
+
+pub async fn resend_verification(
+    State(state): State<AppState>,
+    Json(req): Json<ResendVerificationRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_service =
+        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    auth_service.resend_verification(&req.email).await?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "message": "If that email address is registered and unverified, a new verification link has been dispatched."
+        })),
+    ))
+}
+
 pub async fn refresh(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    let raw_token = extract_refresh_token_from_cookies(&headers)
-        .ok_or_else(|| AppError::Unauthorized("Missing refresh token cookie.".to_string()))?;
+    let raw_refresh_token = extract_refresh_token_from_cookies(&headers)
+        .ok_or_else(|| AppError::Unauthorized("Refresh token cookie is missing.".to_string()))?;
 
-    let auth_service = AuthService::new(&state.db, &state.config);
+    let auth_service =
+        AuthService::new(&state.db, &state.config, state.verification_service.clone());
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
 
-    let (response, new_raw_token) = auth_service.refresh(raw_token, user_agent).await?;
-    let cookie_header =
-        build_refresh_cookie(&new_raw_token, state.config.refresh_token_expiration_days);
+    let (response, new_raw_refresh) = auth_service
+        .refresh(raw_refresh_token, user_agent)
+        .await?;
+
+    let cookie_header = build_refresh_cookie(
+        &new_raw_refresh,
+        state.config.refresh_token_expiration_days,
+    );
 
     Ok((
         StatusCode::OK,
@@ -123,16 +151,15 @@ pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    if let Some(raw_token) = extract_refresh_token_from_cookies(&headers) {
-        let auth_service = AuthService::new(&state.db, &state.config);
-        let _ = auth_service.logout(raw_token).await;
+    if let Some(raw_refresh_token) = extract_refresh_token_from_cookies(&headers) {
+        let auth_service =
+            AuthService::new(&state.db, &state.config, state.verification_service.clone());
+        let _ = auth_service.logout(raw_refresh_token).await;
     }
 
-    let cookie_header = build_clear_refresh_cookie();
     Ok((
-        StatusCode::OK,
-        [(header::SET_COOKIE, cookie_header)],
-        Json(serde_json::json!({ "message": "Logged out successfully." })),
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, build_clear_refresh_cookie())],
     ))
 }
 
@@ -140,14 +167,13 @@ pub async fn logout_all(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service = AuthService::new(&state.db, &state.config);
+    let auth_service =
+        AuthService::new(&state.db, &state.config, state.verification_service.clone());
     auth_service.logout_all(&claims.sub).await?;
 
-    let cookie_header = build_clear_refresh_cookie();
     Ok((
-        StatusCode::OK,
-        [(header::SET_COOKIE, cookie_header)],
-        Json(serde_json::json!({ "message": "All sessions logged out successfully." })),
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, build_clear_refresh_cookie())],
     ))
 }
 
@@ -156,13 +182,13 @@ pub async fn change_password(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ChangePasswordRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service = AuthService::new(&state.db, &state.config);
+    let auth_service =
+        AuthService::new(&state.db, &state.config, state.verification_service.clone());
     auth_service.change_password(&claims.sub, req).await?;
 
-    let cookie_header = build_clear_refresh_cookie();
     Ok((
         StatusCode::OK,
-        [(header::SET_COOKIE, cookie_header)],
-        Json(serde_json::json!({ "message": "Password updated successfully." })),
+        [(header::SET_COOKIE, build_clear_refresh_cookie())],
+        Json(serde_json::json!({ "message": "Password changed successfully" })),
     ))
 }

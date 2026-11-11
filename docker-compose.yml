@@ -18,6 +18,37 @@ services:
       retries: 5
       start_period: 10s
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: drawit_rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - drawit_network
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: drawit_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - drawit_network
+
   backend:
     build:
       context: ./api
@@ -37,6 +68,13 @@ services:
       REFRESH_TOKEN_EXPIRATION_DAYS: ${REFRESH_TOKEN_EXPIRATION_DAYS:-7}
       LOGIN_DELAY_MS: ${LOGIN_DELAY_MS:-1000}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      AMQP_URL: ${AMQP_URL:-amqp://guest:guest@rabbitmq:5672}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      MAIL_FROM: ${MAIL_FROM:-DrawIt <no-reply@drawit.local>}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      VERIFY_LINK_TTL_HOURS: ${VERIFY_LINK_TTL_HOURS:-24}
+      VERIFY_RESEND_COOLDOWN_SECONDS: ${VERIFY_RESEND_COOLDOWN_SECONDS:-90}
     volumes:
       - ./api:/app
       - cargo_cache:/usr/local/cargo/registry
@@ -46,6 +84,10 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
 
   frontend:
     build:
@@ -69,6 +111,8 @@ services:
 volumes:
   mongo_data:
     name: drawit_mongo_data
+  rabbitmq_data:
+    name: drawit_rabbitmq_data
   cargo_cache:
     name: drawit_cargo_cache
   target_cache:

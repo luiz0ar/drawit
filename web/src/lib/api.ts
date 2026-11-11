@@ -6,10 +6,17 @@ export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://lo
 export interface UserProfile {
   id: string;
   username: string;
+  email: string;
+  email_verified?: boolean;
   preferences: {
     theme?: 'light' | 'dark' | 'system';
     language?: string;
   };
+}
+
+export interface RegisterResponse {
+  message: string;
+  email: string;
 }
 
 export interface AuthResponse {
@@ -90,6 +97,8 @@ export interface ProblemDetails {
   detail: string;
   instance: string;
   code?: string;
+  email?: string;
+  retryAfter?: number;
   serverRevision?: number;
   invalidParams?: Array<{ name: string; reason: string }>;
   invalid_params?: Array<{ name: string; reason: string }>;
@@ -216,23 +225,43 @@ export async function request<T>(
 
 // Auth API Endpoints
 export const AuthApi = {
-  register: async (username: string, password: string): Promise<AuthResponse> => {
-    const res = await request<AuthResponse>('/auth/register', {
+  register: async (
+    username: string,
+    email: string,
+    password: string,
+    confirmPassword: string
+  ): Promise<RegisterResponse> => {
+    return request<RegisterResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({
+        username,
+        email,
+        password,
+        confirmPassword,
+      }),
+    });
+  },
+
+  login: async (email: string, password: string): Promise<AuthResponse> => {
+    const res = await request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
     });
     setAccessToken(res.access_token);
     return res;
   },
 
-  login: async (username: string, password: string): Promise<AuthResponse> => {
-    const res = await request<AuthResponse>('/auth/login', {
+  verifyEmail: (token: string): Promise<{ message: string }> =>
+    request<{ message: string }>('/auth/verify-email', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
-    });
-    setAccessToken(res.access_token);
-    return res;
-  },
+      body: JSON.stringify({ token }),
+    }),
+
+  resendVerification: (email: string): Promise<{ message: string }> =>
+    request<{ message: string }>('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
 
   refresh: async (): Promise<AuthResponse> => {
     const res = await request<AuthResponse>('/auth/refresh', {

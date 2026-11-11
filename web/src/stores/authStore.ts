@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AuthApi, UserProfile, setAccessToken, setOnUnauthorized } from '../lib/api';
+import { AuthApi, RegisterResponse, UserProfile, setAccessToken, setOnUnauthorized } from '../lib/api';
 import { navigate } from '../lib/router';
 
 interface AuthState {
@@ -7,8 +7,13 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    confirmPassword: string
+  ) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -27,8 +32,8 @@ export const useAuthStore = create<AuthState>((set) => {
     isAuthenticated: false,
     isLoading: true,
 
-    login: async (username: string, password: string) => {
-      const res = await AuthApi.login(username, password);
+    login: async (email: string, password: string) => {
+      const res = await AuthApi.login(email, password);
       set({
         user: res.user,
         accessToken: res.access_token,
@@ -37,14 +42,13 @@ export const useAuthStore = create<AuthState>((set) => {
       });
     },
 
-    register: async (username: string, password: string) => {
-      const res = await AuthApi.register(username, password);
-      set({
-        user: res.user,
-        accessToken: res.access_token,
-        isAuthenticated: true,
-        isLoading: false,
-      });
+    register: async (
+      username: string,
+      email: string,
+      password: string,
+      confirmPassword: string
+    ) => {
+      return await AuthApi.register(username, email, password, confirmPassword);
     },
 
     logout: async () => {

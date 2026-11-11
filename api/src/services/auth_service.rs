@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use chrono::{Duration, Utc};
 use mongodb::{
     bson::{doc, DateTime as BsonDateTime},
@@ -5,10 +6,13 @@ use mongodb::{
 };
 
 use crate::{
-    dto::{AuthResponse, ChangePasswordRequest, LoginRequest, RegisterRequest, UserDto},
+    dto::{
+        AuthResponse, ChangePasswordRequest, LoginRequest, RegisterRequest, RegisterResponse,
+        UserDto,
+    },
     error::{AppError, InvalidParam},
     models::{RefreshToken, User},
-    services::{PasswordService, TokenService},
+    services::{verification_service::VerificationService, PasswordService, TokenService},
     AppConfig,
 };
 
@@ -16,12 +20,17 @@ pub struct AuthService {
     users_col: Collection<User>,
     tokens_col: Collection<RefreshToken>,
     token_service: TokenService,
+    verification_service: Arc<VerificationService>,
     refresh_exp_days: i64,
     access_exp_minutes: i64,
 }
 
 impl AuthService {
-    pub fn new(db: &Database, config: &AppConfig) -> Self {
+    pub fn new(
+        db: &Database,
+        config: &AppConfig,
+        verification_service: Arc<VerificationService>,
+    ) -> Self {
         Self {
             users_col: db.collection("users"),
             tokens_col: db.collection("refresh_tokens"),
@@ -29,19 +38,33 @@ impl AuthService {
                 config.jwt_secret.clone(),
                 config.jwt_expiration_minutes,
             ),
+            verification_service,
             refresh_exp_days: config.refresh_token_expiration_days,
             access_exp_minutes: config.jwt_expiration_minutes,
         }
     }
 
-    /// RF-A01: Register user with unique username and password
-    pub async fn register(
-        &self,
-        req: RegisterRequest,
-        user_agent: Option<String>,
-    ) -> Result<(AuthResponse, String), AppError> {
+    /// Helper to validate email format
+    fn is_valid_email(email: &str) -> bool {
+        let parts: Vec<&str> = email.split('@').collect();
+        if parts.len() != 2 {
+            return false;
+        }
+        let user = parts[0];
+        let domain = parts[1];
+        if user.is_empty() || domain.is_empty() {
+            return false;
+        }
+        domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+    }
+
+    /// Register user with unique username, email, password and confirmPassword.
+    /// Creates user with email_verified = false and dispatches email verification.
+    pub async fn register(&self, req: RegisterRequest) -> Result<RegisterResponse, AppError> {
         let username = req.username.trim().to_lowercase();
+        let email = req.email.trim().to_lowercase();
         let password = req.password;
+        let confirm_password = req.confirm_password;
 
         let mut invalid_params = Vec::new();
         if username.len() < 3 || username.len() > 30 {
@@ -50,24 +73,60 @@ impl AuthService {
                 reason: "Username must be between 3 and 30 characters long.".to_string(),
             });
         }
+        if !username
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+        {
+            invalid_params.push(InvalidParam {
+                name: "username".to_string(),
+                reason: "Username can only contain letters, numbers, dots, hyphens, and underscores."
+                    .to_string(),
+            });
+        }
+        if email.is_empty() || !Self::is_valid_email(&email) {
+            invalid_params.push(InvalidParam {
+                name: "email".to_string(),
+                reason: "Please provide a valid email address.".to_string(),
+            });
+        }
         if password.len() < 6 {
             invalid_params.push(InvalidParam {
                 name: "password".to_string(),
                 reason: "Password must have at least 6 characters.".to_string(),
             });
         }
+        if password != confirm_password {
+            invalid_params.push(InvalidParam {
+                name: "confirmPassword".to_string(),
+                reason: "Passwords do not match.".to_string(),
+            });
+        }
         if !invalid_params.is_empty() {
             return Err(AppError::Validation(invalid_params));
         }
 
+        // Check if email already exists (explicit 422 as chosen by user)
+        let email_exists = self
+            .users_col
+            .find_one(doc! { "email": &email })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .is_some();
+        if email_exists {
+            return Err(AppError::Validation(vec![InvalidParam {
+                name: "email".to_string(),
+                reason: "An account with this email address already exists.".to_string(),
+            }]));
+        }
+
         // Check if username already exists
-        let exists = self
+        let username_exists = self
             .users_col
             .find_one(doc! { "username": &username })
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?
             .is_some();
-        if exists {
+        if username_exists {
             return Err(AppError::Validation(vec![InvalidParam {
                 name: "username".to_string(),
                 reason: "This username is already taken.".to_string(),
@@ -76,29 +135,37 @@ impl AuthService {
 
         // Argon2id hashing isolated in spawn_blocking
         let password_hash = PasswordService::hash_password(password).await?;
-        let new_user = User::new(username.clone(), password_hash);
+        let new_user = User::new(username, email.clone(), password_hash);
 
         self.users_col
             .insert_one(&new_user)
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        // Generate session with JWT and opaque refresh token
-        self.create_session(&new_user, user_agent).await
+        // Dispatch verification email request
+        self.verification_service
+            .request_verification(&new_user.id, &new_user.email)
+            .await?;
+
+        Ok(RegisterResponse {
+            message: "Account created successfully. Please check your email to verify your account."
+                .to_string(),
+            email: new_user.email,
+        })
     }
 
-    /// RF-A02: Login with valid credentials
+    /// Login with valid email and password credentials
     pub async fn login(
         &self,
         req: LoginRequest,
         user_agent: Option<String>,
     ) -> Result<(AuthResponse, String), AppError> {
-        let username = req.username.trim().to_lowercase();
+        let email = req.email.trim().to_lowercase();
         let password = req.password;
 
         let user_opt = self
             .users_col
-            .find_one(doc! { "username": &username })
+            .find_one(doc! { "email": &email })
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -116,12 +183,42 @@ impl AuthService {
             Some(u) if is_valid => u,
             _ => {
                 return Err(AppError::Unauthorized(
-                    "Invalid username or password.".to_string(),
+                    "Invalid email or password.".to_string(),
                 ));
             }
         };
 
+        // Check if email has been verified
+        if !user.email_verified {
+            return Err(AppError::EmailNotVerified {
+                email: user.email.clone(),
+            });
+        }
+
         self.create_session(&user, user_agent).await
+    }
+
+    /// Resend verification email for an unverified user
+    pub async fn resend_verification(&self, email: &str) -> Result<(), AppError> {
+        let normalized = email.trim().to_lowercase();
+        if normalized.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(user) = self
+            .users_col
+            .find_one(doc! { "email": &normalized })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+        {
+            if !user.email_verified {
+                self.verification_service
+                    .request_verification(&user.id, &user.email)
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 
     /// RF-A03: Atomic refresh token rotation with concurrent grace window (15s)
@@ -224,6 +321,8 @@ impl AuthService {
             user: UserDto {
                 id: user.id,
                 username: user.username,
+                email: user.email,
+                email_verified: user.email_verified,
                 preferences: serde_json::to_value(user.preferences).unwrap(),
             },
         };
@@ -344,6 +443,8 @@ impl AuthService {
             user: UserDto {
                 id: user.id.clone(),
                 username: user.username.clone(),
+                email: user.email.clone(),
+                email_verified: user.email_verified,
                 preferences: serde_json::to_value(&user.preferences).unwrap(),
             },
         };

@@ -4,6 +4,8 @@ import { usePathname, navigate } from './lib/router';
 import { useAuthStore } from './stores/authStore';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
+import { CheckEmailPage } from './features/auth/CheckEmailPage';
+import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { Whiteboard } from './canvas/Whiteboard';
 
@@ -18,7 +20,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (isLoading) return;
 
-    const isAuthRoute = pathname === '/login' || pathname === '/register';
+    const isAuthRoute =
+      pathname === '/login' ||
+      pathname === '/register' ||
+      pathname === '/check-email' ||
+      pathname === '/verify-email';
 
     if (!isAuthenticated && !isAuthRoute) {
       navigate('/login', { replace: true });
@@ -44,6 +50,14 @@ export const App: React.FC = () => {
 
   if (pathname === '/register') {
     return <RegisterPage />;
+  }
+
+  if (pathname === '/check-email') {
+    return <CheckEmailPage />;
+  }
+
+  if (pathname === '/verify-email') {
+    return <VerifyEmailPage />;
   }
 
   if (!isAuthenticated) {

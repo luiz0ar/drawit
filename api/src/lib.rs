@@ -6,6 +6,7 @@ pub mod middleware;
 pub mod models;
 pub mod routes;
 pub mod services;
+pub mod worker;
 
 use axum::{
     http::{header, HeaderValue, Method},
@@ -27,6 +28,9 @@ pub use config::AppConfig;
 pub struct AppState {
     pub db: Database,
     pub config: Arc<AppConfig>,
+    pub publisher: Arc<dyn services::mq::MessagePublisher>,
+    pub verification_service: Arc<services::verification_service::VerificationService>,
+    pub mailer: Arc<dyn services::mailer::Mailer>,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -101,6 +105,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/components", get(routes::boards::list_components))
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/login", post(routes::auth::login))
+        .route("/auth/verify-email", post(routes::auth::verify_email))
+        .route(
+            "/auth/resend-verification",
+            post(routes::auth::resend_verification),
+        )
         .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout));
 
