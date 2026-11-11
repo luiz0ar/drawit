@@ -37,7 +37,8 @@ export interface CanvasEngineCallbacks {
   onElementsChange?: (elements: CanvasElement[]) => void;
   onViewportChange?: (viewport: ViewportTransform) => void;
   onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
-  onEditElementText?: (element: CanvasElement) => void;
+  onToolChange?: (tool: Tool) => void;
+  onEditElementText?: (element: CanvasElement, isNew?: boolean) => void;
 }
 
 const MAX_HISTORY = 50;
@@ -156,6 +157,7 @@ export class CanvasEngine {
   public setTool(tool: Tool) {
     this.activeTool = tool;
     this.updateCursor(this.lastScreenPoint, screenToWorld(this.lastScreenPoint, this.viewport));
+    this.callbacks.onToolChange?.(tool);
   }
 
   public getTool(): Tool {
@@ -227,6 +229,36 @@ export class CanvasEngine {
   }
 
   /**
+   * Accurately measures text bounding dimensions based on canvas font metrics.
+   */
+  public measureTextDimensions(
+    text: string,
+    fontSize: number,
+    fontFamily: string = 'sans'
+  ): { width: number; height: number } {
+    const fontFam =
+      fontFamily === 'mono'
+        ? 'monospace'
+        : fontFamily === 'serif'
+        ? 'serif'
+        : 'sans-serif';
+    this.ctx.save();
+    this.ctx.font = `${fontSize}px ${fontFam}`;
+    const lines = (text || 'Text').split('\n');
+    let maxWidth = 0;
+    for (const line of lines) {
+      const w = this.ctx.measureText(line || ' ').width;
+      if (w > maxWidth) maxWidth = w;
+    }
+    this.ctx.restore();
+    const lineHeight = fontSize * 1.3;
+    return {
+      width: Math.max(30, Math.ceil(maxWidth + 8)),
+      height: Math.max(Math.ceil(lineHeight), Math.ceil(lines.length * lineHeight)),
+    };
+  }
+
+  /**
    * Updates the text/label of a specific element (RF-E04).
    */
   public updateElementText(elementId: string, newText: string) {
@@ -236,13 +268,61 @@ export class CanvasEngine {
     if (target.type === 'text') {
       (target as any).text = newText;
       target.label = newText;
-      const lines = newText.split('\n');
-      const maxLen = Math.max(...lines.map((l) => l.length), 4);
-      target.width = Math.max(80, maxLen * 9.5);
-      target.height = Math.max(28, lines.length * 22);
+      const fontSize = (target as any).fontSize || 20;
+      const dims = this.measureTextDimensions(newText, fontSize, (target as any).fontFamily);
+      target.width = dims.width;
+      target.height = dims.height;
     } else {
       target.label = newText;
     }
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  public updateSelectedFontSize(fontSize: number) {
+    if (this.selectedIds.size === 0) return;
+    this.pushHistorySnapshot();
+    for (const el of this.elements) {
+      if (this.selectedIds.has(el.id)) {
+        (el as any).fontSize = fontSize;
+        if (el.type === 'text') {
+          const content = (el as any).text !== undefined ? (el as any).text : (el.label || 'Text');
+          const dims = this.measureTextDimensions(content, fontSize, (el as any).fontFamily);
+          el.width = dims.width;
+          el.height = dims.height;
+        }
+      }
+    }
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+  }
+
+  public removeElementIfEmpty(elementId: string) {
+    const target = this.elements.find((el) => el.id === elementId);
+    if (!target) return;
+    if (target.type === 'text') {
+      const text = ((target as any).text !== undefined ? (target as any).text : target.label || '').trim();
+      if (!text) {
+        this.elements = this.elements.filter((el) => el.id !== elementId);
+        this.selectedIds.delete(elementId);
+        this.isDirty = true;
+        this.notifySelectionChange();
+        this.callbacks.onElementsChange?.(this.elements);
+      }
+    }
+  }
+
+  public setEditingId(id: string | null) {
+    this.renderer.setEditingId(id);
+    this.isDirty = true;
+  }
+
+  public deleteElement(elementId: string) {
+    this.pushHistorySnapshot();
+    this.elements = this.elements.filter((el) => el.id !== elementId);
+    this.selectedIds.delete(elementId);
     this.isDirty = true;
     this.notifySelectionChange();
     this.callbacks.onElementsChange?.(this.elements);
@@ -646,11 +726,56 @@ export class CanvasEngine {
       if (hitTestElement(worldPoint, this.elements[i])) {
         const hit = this.elements[i];
         if (!hit.locked) {
-          this.callbacks.onEditElementText?.(hit);
+          this.selectedIds.clear();
+          this.selectedIds.add(hit.id);
+          this.setEditingId(hit.id);
+          this.notifySelectionChange();
+          this.callbacks.onEditElementText?.(hit, false);
         }
         return;
       }
     }
+
+    // Double-clicking on empty canvas creates text directly at click position
+    this.pushHistorySnapshot();
+    const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
+    const newTextEl: CanvasElement = {
+      id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'text',
+      text: 'Texto',
+      label: 'Texto',
+      fontFamily: 'sans',
+      fontSize: 20,
+      textAlign: 'left',
+      x: worldPoint.x,
+      y: worldPoint.y,
+      width: 100,
+      height: 28,
+      rotation: 0,
+      zIndex: this.elements.length + 1,
+      groupIds: [],
+      locked: false,
+      style: {
+        strokeColor,
+        fillColor: 'transparent',
+        strokeWidth: 2,
+        strokeStyle: 'solid',
+        opacity: 100,
+        effect: { type: 'none', intensity: 0 },
+      },
+      version: 1,
+    };
+    this.elements.push(newTextEl);
+    this.selectedIds.clear();
+    this.selectedIds.add(newTextEl.id);
+    this.activeTool = 'select';
+    this.callbacks.onToolChange?.('select');
+    this.setEditingId(newTextEl.id);
+    this.isDirty = true;
+    this.notifySelectionChange();
+    this.callbacks.onElementsChange?.(this.elements);
+    this.callbacks.onEditElementText?.(newTextEl, true);
+    this.isPointerDown = false;
   };
 
   private onWheel = (e: WheelEvent) => {
@@ -771,21 +896,47 @@ export class CanvasEngine {
       return;
     }
 
-    // Creating Text node (RF-E04)
+    // Creating Text node or editing clicked element (RF-E04)
     if (this.activeTool === 'text') {
+      // Check if clicking on an existing element to edit it directly
+      let hit: CanvasElement | null = null;
+      for (let i = this.elements.length - 1; i >= 0; i--) {
+        if (hitTestElement(this.startWorldPoint, this.elements[i])) {
+          hit = this.elements[i];
+          break;
+        }
+      }
+      if (hit && !hit.locked) {
+        this.selectedIds.clear();
+        this.selectedIds.add(hit.id);
+        this.activeTool = 'select';
+        this.callbacks.onToolChange?.('select');
+        this.setEditingId(hit.id);
+        this.isDirty = true;
+        this.notifySelectionChange();
+        this.callbacks.onEditElementText?.(hit, false);
+        try {
+          if (this.canvas.hasPointerCapture(e.pointerId)) {
+            this.canvas.releasePointerCapture(e.pointerId);
+          }
+        } catch {}
+        this.isPointerDown = false;
+        return;
+      }
+
       this.pushHistorySnapshot();
       const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
       const newTextEl: CanvasElement = {
         id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         type: 'text',
-        text: 'Text label',
-        label: 'Text label',
+        text: 'Texto',
+        label: 'Texto',
         fontFamily: 'sans',
-        fontSize: 16,
+        fontSize: 20,
         textAlign: 'left',
         x: this.startWorldPoint.x,
         y: this.startWorldPoint.y,
-        width: 110,
+        width: 100,
         height: 28,
         rotation: 0,
         zIndex: this.elements.length + 1,
@@ -805,10 +956,18 @@ export class CanvasEngine {
       this.selectedIds.clear();
       this.selectedIds.add(newTextEl.id);
       this.activeTool = 'select';
+      this.callbacks.onToolChange?.('select');
+      this.setEditingId(newTextEl.id);
       this.isDirty = true;
       this.notifySelectionChange();
       this.callbacks.onElementsChange?.(this.elements);
-      this.callbacks.onEditElementText?.(newTextEl);
+      this.callbacks.onEditElementText?.(newTextEl, true);
+      try {
+        if (this.canvas.hasPointerCapture(e.pointerId)) {
+          this.canvas.releasePointerCapture(e.pointerId);
+        }
+      } catch {}
+      this.isPointerDown = false;
       return;
     }
 
@@ -1095,6 +1254,44 @@ export class CanvasEngine {
           const newH = Math.max(16, init.height - dy);
           el.y = init.y + (init.height - newH);
           el.height = newH;
+        }
+
+        // TEXT / COMPONENT SCALING: Scale font size proportionally when resizing text
+        if (el.type === 'text') {
+          const initFontSize = (init as any).fontSize || 20;
+          let scale = 1;
+          if (h === 'e' || h === 'w') {
+            scale = el.width / Math.max(10, init.width);
+          } else if (h === 's' || h === 'n') {
+            scale = el.height / Math.max(10, init.height);
+          } else {
+            // Corner handles (nw, ne, se, sw)
+            const scaleW = el.width / Math.max(10, init.width);
+            const scaleH = el.height / Math.max(10, init.height);
+            scale = Math.abs(dx) > Math.abs(dy) ? scaleW : scaleH;
+          }
+
+          scale = Math.max(0.2, Math.min(10, scale));
+          const newFontSize = Math.max(8, Math.min(240, Math.round(initFontSize * scale)));
+          (el as any).fontSize = newFontSize;
+
+          const content = (el as any).text !== undefined ? (el as any).text : (el.label || 'Text');
+          const dims = this.measureTextDimensions(content, newFontSize, (el as any).fontFamily);
+
+          if (h.includes('w')) {
+            el.x = (init.x + init.width) - dims.width;
+          }
+          if (h.includes('n')) {
+            el.y = (init.y + init.height) - dims.height;
+          }
+          el.width = dims.width;
+          el.height = dims.height;
+        } else if (el.label) {
+          const initFontSize = (init as any).fontSize || (init.type === 'sticky' ? 14 : init.type === 'component' ? 12 : 14);
+          const scaleW = el.width / Math.max(10, init.width);
+          const scaleH = el.height / Math.max(10, init.height);
+          const scale = (scaleW + scaleH) / 2;
+          (el as any).fontSize = Math.max(8, Math.min(120, Math.round(initFontSize * scale)));
         }
       }
 

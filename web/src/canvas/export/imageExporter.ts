@@ -77,7 +77,20 @@ export function exportToSvgString(
     switch (el.type) {
       case 'rectangle':
         svgContent += `  <rect x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (el.label) {
+          const fontSize = (el as any).fontSize || 14;
+          svgContent += `  <text x="${el.x + el.width / 2}" y="${el.y + el.height / 2 + fontSize / 3}" font-family="sans-serif" font-size="${fontSize}" font-weight="500" text-anchor="middle" fill="${stroke}">${el.label}</text>\n`;
+        }
         break;
+
+      case 'sticky': {
+        const fontSize = (el as any).fontSize || 14;
+        svgContent += `  <rect x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" rx="4" fill="${fill === 'transparent' ? '#fef08a' : fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (el.label) {
+          svgContent += `  <text x="${el.x + el.width / 2}" y="${el.y + el.height / 2 + fontSize / 3}" font-family="sans-serif" font-size="${fontSize}" font-weight="500" text-anchor="middle" fill="#1e293b">${el.label}</text>\n`;
+        }
+        break;
+      }
 
       case 'ellipse': {
         const cx = el.x + el.width / 2;
@@ -85,6 +98,10 @@ export function exportToSvgString(
         const rx = el.width / 2;
         const ry = el.height / 2;
         svgContent += `  <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (el.label) {
+          const fontSize = (el as any).fontSize || 14;
+          svgContent += `  <text x="${cx}" y="${cy + fontSize / 3}" font-family="sans-serif" font-size="${fontSize}" font-weight="500" text-anchor="middle" fill="${stroke}">${el.label}</text>\n`;
+        }
         break;
       }
 
@@ -93,12 +110,20 @@ export function exportToSvgString(
         const cy = el.y + el.height / 2;
         const points = `${cx},${el.y} ${el.x + el.width},${cy} ${cx},${el.y + el.height} ${el.x},${cy}`;
         svgContent += `  <polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (el.label) {
+          const fontSize = (el as any).fontSize || 14;
+          svgContent += `  <text x="${cx}" y="${cy + fontSize / 3}" font-family="sans-serif" font-size="${fontSize}" font-weight="500" text-anchor="middle" fill="${stroke}">${el.label}</text>\n`;
+        }
         break;
       }
 
       case 'triangle': {
         const points = `${el.x + el.width / 2},${el.y} ${el.x + el.width},${el.y + el.height} ${el.x},${el.y + el.height}`;
         svgContent += `  <polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (el.label) {
+          const fontSize = (el as any).fontSize || 14;
+          svgContent += `  <text x="${el.x + el.width / 2}" y="${el.y + el.height * 0.6}" font-family="sans-serif" font-size="${fontSize}" font-weight="500" text-anchor="middle" fill="${stroke}">${el.label}</text>\n`;
+        }
         break;
       }
 
@@ -117,13 +142,34 @@ export function exportToSvgString(
 
       case 'component': {
         const comp = el as any;
-        const def = IT_COMPONENTS[comp.componentType as keyof typeof IT_COMPONENTS];
-        if (def) {
-          svgContent += `  <g transform="translate(${el.x}, ${el.y})">\n`;
-          svgContent += `    <rect width="${el.width}" height="${el.height}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
-          svgContent += `    <text x="${el.width / 2}" y="${el.height - 10}" font-family="sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="${stroke}">${def.name}</text>\n`;
-          svgContent += `  </g>\n`;
+        const compKey = comp.componentKey || comp.componentType;
+        const def = IT_COMPONENTS[compKey as keyof typeof IT_COMPONENTS];
+        const labelText = comp.label || def?.name || '';
+        const fontSize = (el as any).fontSize || 12;
+        svgContent += `  <g transform="translate(${el.x}, ${el.y})">\n`;
+        svgContent += `    <rect width="${el.width}" height="${el.height}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}" />\n`;
+        if (labelText) {
+          svgContent += `    <text x="${el.width / 2}" y="${el.height + 16}" font-family="sans-serif" font-size="${fontSize}" font-weight="600" text-anchor="middle" fill="${stroke}">${labelText}</text>\n`;
         }
+        svgContent += `  </g>\n`;
+        break;
+      }
+
+      case 'text': {
+        const fontSize = (el as any).fontSize || 20;
+        const fontFamily =
+          (el as any).fontFamily === 'mono'
+            ? 'monospace'
+            : (el as any).fontFamily === 'serif'
+            ? 'serif'
+            : 'sans-serif';
+        const content = (el as any).text !== undefined ? (el as any).text : (el.label || '');
+        const lines = String(content).split('\n');
+        svgContent += `  <g transform="translate(${el.x}, ${el.y})" opacity="${opacity}">\n`;
+        for (let i = 0; i < lines.length; i++) {
+          svgContent += `    <text x="0" y="${(i + 1) * fontSize}" font-family="${fontFamily}" font-size="${fontSize}" fill="${stroke}">${lines[i]}</text>\n`;
+        }
+        svgContent += `  </g>\n`;
         break;
       }
     }

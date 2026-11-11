@@ -8,9 +8,14 @@ import { getElementAnchors } from './anchors';
  */
 export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
+  private editingId: string | null = null;
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
+  }
+
+  public setEditingId(id: string | null) {
+    this.editingId = id;
   }
 
   /**
@@ -272,14 +277,16 @@ export class CanvasRenderer {
           : ctx.rect(element.x, element.y, element.width, element.height);
         if (element.style.fillColor !== 'transparent') ctx.fill();
         ctx.stroke();
-        if (element.label) {
+        if (element.label && element.id !== this.editingId) {
+          const fontSize = (element as any).fontSize || 14;
           this.renderCenteredText(
             element.label,
             element.x,
             element.y,
             element.width,
             element.height,
-            element.style.strokeColor
+            element.style.strokeColor,
+            fontSize
           );
         }
         break;
@@ -312,15 +319,18 @@ export class CanvasRenderer {
         ctx.lineTo(element.x + element.width, element.y + fold);
         ctx.stroke();
 
-        this.renderCenteredText(
-          element.label || 'Sticky note',
-          element.x + 8,
-          element.y + 8,
-          element.width - 16,
-          element.height - 16,
-          '#1e293b',
-          14
-        );
+        if (element.id !== this.editingId) {
+          const fontSize = (element as any).fontSize || 14;
+          this.renderCenteredText(
+            element.label || 'Sticky note',
+            element.x + 8,
+            element.y + 8,
+            element.width - 16,
+            element.height - 16,
+            '#1e293b',
+            fontSize
+          );
+        }
         break;
       }
 
@@ -331,14 +341,16 @@ export class CanvasRenderer {
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         if (element.style.fillColor !== 'transparent') ctx.fill();
         ctx.stroke();
-        if (element.label) {
+        if (element.label && element.id !== this.editingId) {
+          const fontSize = (element as any).fontSize || 14;
           this.renderCenteredText(
             element.label,
             element.x,
             element.y,
             element.width,
             element.height,
-            element.style.strokeColor
+            element.style.strokeColor,
+            fontSize
           );
         }
         break;
@@ -352,14 +364,16 @@ export class CanvasRenderer {
         ctx.closePath();
         if (element.style.fillColor !== 'transparent') ctx.fill();
         ctx.stroke();
-        if (element.label) {
+        if (element.label && element.id !== this.editingId) {
+          const fontSize = (element as any).fontSize || 14;
           this.renderCenteredText(
             element.label,
             element.x,
             element.y,
             element.width,
             element.height,
-            element.style.strokeColor
+            element.style.strokeColor,
+            fontSize
           );
         }
         break;
@@ -372,14 +386,16 @@ export class CanvasRenderer {
         ctx.closePath();
         if (element.style.fillColor !== 'transparent') ctx.fill();
         ctx.stroke();
-        if (element.label) {
+        if (element.label && element.id !== this.editingId) {
+          const fontSize = (element as any).fontSize || 14;
           this.renderCenteredText(
             element.label,
             element.x,
             element.y + element.height * 0.2,
             element.width,
             element.height * 0.8,
-            element.style.strokeColor
+            element.style.strokeColor,
+            fontSize
           );
         }
         break;
@@ -414,10 +430,11 @@ export class CanvasRenderer {
           ctx.strokeRect(element.x, element.y, element.width, element.height);
         }
 
-        if ((element as any).label) {
+        if ((element as any).label && element.id !== this.editingId) {
+          const fontSize = (element as any).fontSize || 12;
           ctx.shadowBlur = 0;
           ctx.fillStyle = element.style.strokeColor;
-          ctx.font = '600 12px sans-serif';
+          ctx.font = `600 ${fontSize}px sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
           ctx.fillText(
@@ -430,9 +447,10 @@ export class CanvasRenderer {
       }
 
       case 'text': {
+        if (element.id === this.editingId) break;
         ctx.shadowBlur = 0;
         ctx.fillStyle = element.style.strokeColor;
-        const fontSize = (element as any).fontSize || 16;
+        const fontSize = (element as any).fontSize || 20;
         const fontFamily =
           (element as any).fontFamily === 'mono'
             ? 'monospace'
@@ -441,8 +459,9 @@ export class CanvasRenderer {
             : 'sans-serif';
         ctx.font = `${fontSize}px ${fontFamily}`;
         ctx.textBaseline = 'top';
-        ctx.textAlign = 'left';
-        const content = (element as any).text || element.label || 'Text';
+        ctx.textAlign = (element as any).textAlign || 'left';
+        const content = (element as any).text !== undefined ? (element as any).text : (element.label || '');
+        if (!content) break;
         const lines = String(content).split('\n');
         for (let i = 0; i < lines.length; i++) {
           ctx.fillText(lines[i], element.x, element.y + i * (fontSize * 1.3));

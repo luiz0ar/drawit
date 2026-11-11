@@ -16,6 +16,7 @@ interface StyleInspectorProps {
   selectedElements: CanvasElement[];
   onUpdateStyle: (partial: Partial<ElementStyle>) => void;
   onUpdateRouting: (routing: 'straight' | 'orthogonal' | 'curved') => void;
+  onUpdateFontSize?: (fontSize: number) => void;
   onEditText: (element: CanvasElement) => void;
   onToggleLock: () => void;
   onDuplicate: () => void;
@@ -52,6 +53,7 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
   selectedElements,
   onUpdateStyle,
   onUpdateRouting,
+  onUpdateFontSize,
   onEditText,
   onToggleLock,
   onDuplicate,
@@ -67,6 +69,11 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
   const style = primary.style;
   const allLocked = selectedElements.every((el) => el.locked);
   const hasArrow = selectedElements.some((el) => el.type === 'arrow');
+  const hasTextOrLabel = selectedElements.some(
+    (el) => el.type === 'text' || el.type === 'sticky' || Boolean(el.label)
+  );
+  const currentFontSize =
+    (primary as any).fontSize || (primary.type === 'text' ? 20 : 14);
   const currentRouting = (primary as any).routing || 'straight';
 
   return (
@@ -209,6 +216,36 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Font / Text Size Control */}
+      {hasTextOrLabel && onUpdateFontSize && (
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+            <Type className="w-3 h-3" />
+            <span>Text Size</span>
+          </label>
+          <div className="flex rounded-lg border bg-muted/40 p-0.5">
+            {[
+              { label: 'S', size: 14 },
+              { label: 'M', size: 20 },
+              { label: 'L', size: 28 },
+              { label: 'XL', size: 40 },
+            ].map(({ label, size }) => (
+              <button
+                key={label}
+                onClick={() => onUpdateFontSize(size)}
+                className={`flex-1 py-1 text-[11px] rounded font-medium transition-colors ${
+                  currentFontSize === size
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Arrow Routing Mode (RF-E06) */}
       {hasArrow && (

@@ -41,6 +41,7 @@ export interface BaseElement {
   style: ElementStyle;
   version: number;
   label?: string;
+  fontSize?: number;
 }
 
 export interface GeometricElement extends BaseElement {

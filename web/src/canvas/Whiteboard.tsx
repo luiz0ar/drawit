@@ -64,6 +64,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<CanvasEngine | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { resolvedTheme, setTheme } = useTheme();
 
@@ -88,7 +89,22 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
 
   // In-place Text / Label Editor State (RF-E04)
   const [editingElement, setEditingElement] = useState<CanvasElement | null>(null);
+  const [editingIsNew, setEditingIsNew] = useState(false);
   const [editingTextValue, setEditingTextValue] = useState('');
+  const editingMountedAt = useRef<number>(0);
+
+  useEffect(() => {
+    if (editingElement) {
+      editingMountedAt.current = Date.now();
+      const timer = setTimeout(() => {
+        if (inlineInputRef.current) {
+          inlineInputRef.current.focus();
+          inlineInputRef.current.select();
+        }
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [editingElement?.id]);
 
   // Boards & Groups State
   const [boards, setBoards] = useState<Board[]>([]);
@@ -248,11 +264,17 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         setCanUndo(undoAvailable);
         setCanRedo(redoAvailable);
       },
-      onEditElementText: (el) => {
+      onToolChange: (tool) => {
+        setActiveTool(tool);
+      },
+      onEditElementText: (el, isNew = false) => {
+        editingMountedAt.current = Date.now();
         setEditingElement(el);
+        setEditingIsNew(isNew);
         setEditingTextValue(
-          el.type === 'text' ? (el as any).text || el.label || '' : el.label || ''
+          el.type === 'text' ? ((el as any).text !== undefined ? (el as any).text : el.label || '') : el.label || ''
         );
+        engine.setEditingId(el.id);
       },
     });
 
@@ -358,12 +380,32 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
     engineRef.current?.pasteClipboard();
   };
 
-  const handleSaveEditedText = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingElement && engineRef.current) {
-      engineRef.current.updateElementText(editingElement.id, editingTextValue.trim());
+  const handleCommitInlineText = (force = false) => {
+    if (!editingElement || !engineRef.current) return;
+    if (!force && Date.now() - editingMountedAt.current < 350) {
+      inlineInputRef.current?.focus();
+      return;
     }
+    const val = editingTextValue;
+    const trimmed = val.trim();
+    if (editingElement.type === 'text' && !trimmed) {
+      engineRef.current.deleteElement(editingElement.id);
+    } else {
+      engineRef.current.updateElementText(editingElement.id, val);
+    }
+    engineRef.current.setEditingId(null);
     setEditingElement(null);
+    setEditingIsNew(false);
+  };
+
+  const handleCancelInlineText = () => {
+    if (!editingElement || !engineRef.current) return;
+    if (editingElement.type === 'text' && editingIsNew) {
+      engineRef.current.deleteElement(editingElement.id);
+    }
+    engineRef.current.setEditingId(null);
+    setEditingElement(null);
+    setEditingIsNew(false);
   };
 
   // Export & Import actions
@@ -596,11 +638,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         selectedElements={selectedElements}
         onUpdateStyle={handleUpdateStyle}
         onUpdateRouting={handleUpdateRouting}
+        onUpdateFontSize={(fontSize) => engineRef.current?.updateSelectedFontSize(fontSize)}
         onEditText={(el) => {
+          editingMountedAt.current = Date.now();
           setEditingElement(el);
+          setEditingIsNew(false);
           setEditingTextValue(
-            el.type === 'text' ? (el as any).text || el.label || '' : el.label || ''
+            el.type === 'text' ? ((el as any).text !== undefined ? (el as any).text : el.label || '') : el.label || ''
           );
+          engineRef.current?.setEditingId(el.id);
         }}
         onToggleLock={handleToggleLock}
         onDuplicate={handleDuplicateSelected}
@@ -807,55 +853,112 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         </div>
       )}
 
-      {/* In-Place Element Text / Label Editor Modal (RF-E04) */}
-      {editingElement && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm"
-          onClick={() => setEditingElement(null)}
-        >
-          <form
-            onSubmit={handleSaveEditedText}
+      {/* Direct Inline On-Screen Text / Label Editor (No Modal) */}
+      {editingElement && (() => {
+        const zoom = viewport.zoom;
+        const baseFontSize =
+          (editingElement as any).fontSize || (editingElement.type === 'text' ? 20 : 14);
+        const fontSize = Math.max(12, baseFontSize * zoom);
+        const strokeColor = editingElement.style.strokeColor;
+
+        let left = viewport.panX + editingElement.x * zoom;
+        let top = viewport.panY + editingElement.y * zoom;
+        let width = Math.max(100, editingElement.width * zoom);
+        let height = Math.max(36, editingElement.height * zoom);
+        let textAlign: 'left' | 'center' | 'right' = 'center';
+
+        if (editingElement.type === 'text') {
+          textAlign = (editingElement as any).textAlign || 'left';
+          const lines = editingTextValue.split('\n');
+          const maxLineLen = Math.max(...lines.map((l) => l.length), 3);
+          const dynamicW = maxLineLen * (baseFontSize * 0.65) * zoom + 32;
+          width = Math.max(120, editingElement.width * zoom + 32, dynamicW);
+          height = Math.max(36, lines.length * (fontSize * 1.35) + 16);
+        } else if (editingElement.type === 'component') {
+          textAlign = 'center';
+          const lines = editingTextValue.split('\n');
+          const maxLineLen = Math.max(...lines.map((l) => l.length), 6);
+          const dynamicW = maxLineLen * (baseFontSize * 0.65) * zoom + 32;
+          width = Math.max(140, (editingElement.width + 40) * zoom, dynamicW);
+          left = viewport.panX + (editingElement.x + editingElement.width / 2) * zoom - width / 2;
+          top = viewport.panY + (editingElement.y + editingElement.height + 4) * zoom;
+          height = Math.max(32, 28 * zoom);
+        } else if (editingElement.type === 'sticky') {
+          left = viewport.panX + (editingElement.x + 8) * zoom;
+          top = viewport.panY + (editingElement.y + 8) * zoom;
+          width = Math.max(80, (editingElement.width - 16) * zoom);
+          height = Math.max(36, (editingElement.height - 16) * zoom);
+          textAlign = 'center';
+        } else {
+          // Geometric shapes (rectangle, ellipse, diamond, triangle)
+          textAlign = 'center';
+          left = viewport.panX + (editingElement.x + 8) * zoom;
+          top =
+            viewport.panY +
+            (editingElement.y +
+              (editingElement.type === 'triangle' ? editingElement.height * 0.25 : 8)) *
+              zoom;
+          width = Math.max(80, (editingElement.width - 16) * zoom);
+          height = Math.max(
+            36,
+            (editingElement.height -
+              (editingElement.type === 'triangle' ? editingElement.height * 0.35 : 16)) *
+              zoom
+          );
+        }
+
+        return (
+          <div
+            className="absolute z-40 pointer-events-auto select-text"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              minHeight: `${height}px`,
+              transform: editingElement.rotation ? `rotate(${editingElement.rotation}rad)` : undefined,
+              transformOrigin: 'top left',
+            }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-xl border bg-card p-5 shadow-2xl space-y-4"
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">
-                Edit Element Text / Label
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEditingElement(null)}
-                className="p-1 rounded hover:bg-muted text-muted-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
             <textarea
-              autoFocus
-              rows={3}
+              ref={inlineInputRef}
+              rows={Math.max(1, editingTextValue.split('\n').length)}
               value={editingTextValue}
               onChange={(e) => setEditingTextValue(e.target.value)}
-              placeholder="Enter text or label..."
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (e.shiftKey) {
+                    // Shift+Enter creates a new line
+                  } else {
+                    e.preventDefault();
+                    handleCommitInlineText(true);
+                  }
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCancelInlineText();
+                }
+              }}
+              onBlur={() => handleCommitInlineText(false)}
+              placeholder={editingElement.type === 'text' ? 'Digite o texto...' : 'Rótulo...'}
+              style={{
+                fontSize: `${fontSize}px`,
+                lineHeight: `${fontSize * 1.3}px`,
+                color: strokeColor,
+                textAlign,
+                fontFamily:
+                  (editingElement as any).fontFamily === 'mono'
+                    ? 'monospace'
+                    : (editingElement as any).fontFamily === 'serif'
+                    ? 'serif'
+                    : 'sans-serif',
+              }}
+              className="w-full h-full min-h-[32px] resize-none overflow-hidden select-text cursor-text bg-background/95 dark:bg-card/95 backdrop-blur-sm border-2 border-primary rounded-lg px-2.5 py-1 outline-none shadow-2xl focus:ring-2 focus:ring-primary/40 font-medium"
             />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingElement(null)}
-                className="px-3 py-1.5 rounded-lg border text-xs font-medium hover:bg-muted"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90"
-              >
-                Apply Text
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+          </div>
+        );
+      })()}
 
       {/* Bottom Left Navigation Controls: Zoom & Viewport */}
       <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1 p-1 rounded-lg border bg-card/95 backdrop-blur shadow-md text-foreground text-xs font-medium">

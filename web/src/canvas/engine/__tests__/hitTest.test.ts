@@ -175,6 +175,21 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
     expect(hitTestSelectionHandle({ x: 200, y: 76 }, baseElement, vp)).toBe('rotate');
   });
 
+  it('detects hits anywhere inside text elements', () => {
+    const textEl: CanvasElement = {
+      ...baseElement,
+      type: 'text',
+      text: 'Architecture Title',
+      fontSize: 24,
+      width: 180,
+      height: 36,
+    } as any;
+
+    expect(hitTestElement({ x: 120, y: 110 }, textEl)).toBe(true);
+    expect(hitTestElement({ x: 250, y: 130 }, textEl)).toBe(true);
+    expect(hitTestElement({ x: 50, y: 50 }, textEl)).toBe(false);
+  });
+
   it('registers all 20 P0 IT Architecture components across 5 categories', () => {
     const keys = Object.keys(IT_COMPONENTS);
     expect(keys.length).toBe(20);
