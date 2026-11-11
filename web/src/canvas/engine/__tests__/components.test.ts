@@ -26,6 +26,16 @@ describe('IT Components & Lucide rendering', () => {
     expect(queue.iconNodes.length).toBe(3);
   });
 
+  it('has rabbitmq component defined with Rabbit icon in messaging category', () => {
+    const rmq = IT_COMPONENTS.rabbitmq;
+    expect(rmq).toBeDefined();
+    expect(rmq.key).toBe('rabbitmq');
+    expect(rmq.name).toBe('RabbitMQ');
+    expect(rmq.category).toBe('messaging');
+    expect(rmq.iconName).toBe('Rabbit');
+    expect(rmq.iconNodes.length).toBe(5);
+  });
+
   it('draws ellipse for database icon without throwing', () => {
     const mockCtx = {
       save: vi.fn(),

@@ -234,6 +234,7 @@ pub async fn list_components() -> Result<impl IntoResponse, AppError> {
         { "key": "object_storage", "name": "Object Storage", "category": "data", "defaultWidth": 90, "defaultHeight": 85 },
         { "key": "queue", "name": "Message Queue", "category": "messaging", "defaultWidth": 110, "defaultHeight": 60 },
         { "key": "event_stream", "name": "Event Stream / Bus", "category": "messaging", "defaultWidth": 120, "defaultHeight": 65 },
+        { "key": "rabbitmq", "name": "RabbitMQ", "category": "messaging", "defaultWidth": 100, "defaultHeight": 80 },
         { "key": "cloud", "name": "Cloud", "category": "infra", "defaultWidth": 120, "defaultHeight": 80 },
         { "key": "cdn", "name": "CDN", "category": "infra", "defaultWidth": 100, "defaultHeight": 80 },
         { "key": "firewall", "name": "Firewall / WAF", "category": "infra", "defaultWidth": 90, "defaultHeight": 85 },

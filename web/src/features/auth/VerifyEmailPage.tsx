@@ -123,7 +123,7 @@ export const VerifyEmailPage: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <span>Confirm & Activate Account</span>
+                    <span>Confirm</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

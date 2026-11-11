@@ -34,14 +34,19 @@ pub struct AppState {
 }
 
 pub fn create_router(state: AppState) -> Router {
-    let allowed_origin = state
+    let allowed_origins: Vec<HeaderValue> = state
         .config
         .frontend_origin
-        .parse::<HeaderValue>()
-        .unwrap_or_else(|_| HeaderValue::from_static("http://localhost:3000"));
+        .split(',')
+        .filter_map(|s| s.trim().parse::<HeaderValue>().ok())
+        .collect();
 
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::exact(allowed_origin))
+        .allow_origin(AllowOrigin::list(if allowed_origins.is_empty() {
+            vec![HeaderValue::from_static("http://localhost:3000")]
+        } else {
+            allowed_origins
+        }))
         .allow_methods([
             Method::GET,
             Method::POST,

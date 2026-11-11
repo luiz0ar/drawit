@@ -192,7 +192,7 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
 
   it('registers all IT Architecture components across 5 categories', () => {
     const keys = Object.keys(IT_COMPONENTS);
-    expect(keys.length).toBe(19);
+    expect(keys.length).toBe(20);
     expect(keys).toEqual(
       expect.arrayContaining([
         'browser',
@@ -209,6 +209,7 @@ describe('Hit Testing Engine & 20 P0 IT Components', () => {
         'object_storage',
         'queue',
         'event_stream',
+        'rabbitmq',
         'cloud',
         'cdn',
         'firewall',
