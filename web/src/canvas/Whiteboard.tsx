@@ -128,6 +128,59 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
   const [isComponentLibraryOpen, setIsComponentLibraryOpen] = useState(false);
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
 
+  const componentLibraryRef = useRef<HTMLDivElement | null>(null);
+  const componentLibraryButtonRef = useRef<HTMLButtonElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close Component Library when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!isComponentLibraryOpen) return;
+
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+
+      if (
+        componentLibraryRef.current &&
+        !componentLibraryRef.current.contains(target) &&
+        componentLibraryButtonRef.current &&
+        !componentLibraryButtonRef.current.contains(target)
+      ) {
+        setIsComponentLibraryOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsComponentLibraryOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDownOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDownOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isComponentLibraryOpen]);
+
+  // Close Export menu on outside click
+  useEffect(() => {
+    if (!isExportMenuOpen) return;
+
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (exportMenuRef.current && !exportMenuRef.current.contains(target)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => window.removeEventListener('pointerdown', handlePointerDownOutside);
+  }, [isExportMenuOpen]);
+
   // In-place Text / Label Editor State (RF-E04)
   const [editingElement, setEditingElement] = useState<CanvasElement | null>(null);
   const [editingIsNew, setEditingIsNew] = useState(false);
@@ -835,7 +888,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
 
         <div className="w-[1px] h-5 bg-border mx-1 shrink-0" />
         <button
-          title="All 20 IT Architecture Components Library"
+          ref={componentLibraryButtonRef}
+          title="IT Architecture Components Library"
           onClick={() => setIsComponentLibraryOpen((prev) => !prev)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isComponentLibraryOpen
             ? 'bg-primary text-primary-foreground'
@@ -847,9 +901,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         </button>
       </div>
 
-      {/* 20 P0 IT Architecture Component Library Popover (RF-E03) */}
+      {/* IT Architecture Component Library Popover (RF-E03) */}
       {isComponentLibraryOpen && (
-        <div className="absolute top-28 xl:top-16 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-2xl rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-4 text-foreground animate-in fade-in zoom-in-95 duration-150">
+        <div
+          ref={componentLibraryRef}
+          className="absolute top-28 xl:top-16 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-2xl rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-4 text-foreground animate-in fade-in zoom-in-95 duration-150"
+        >
           <div className="flex items-center justify-between border-b pb-2.5 mb-3">
             <div className="flex items-center gap-2">
               <Boxes className="w-4 h-4 text-primary" />
@@ -880,7 +937,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                       return (
                         <button
                           key={comp.key}
-                          onClick={() => handleToolSelect(comp.key as Tool)}
+                          onClick={() => {
+                            handleToolSelect(comp.key as Tool);
+                            setIsComponentLibraryOpen(false);
+                          }}
                           className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-2 ${
                             isSelected
                               ? 'bg-primary text-primary-foreground border-primary'
@@ -1066,7 +1126,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
         </button>
 
         {/* Export Dropdown Trigger */}
-        <div className="relative">
+        <div ref={exportMenuRef} className="relative">
           <button
             title="Export & Portability"
             onClick={() => setIsExportMenuOpen((prev) => !prev)}
