@@ -36,6 +36,8 @@ impl Modify for SecurityAddon {
         routes::auth::login,
         routes::auth::verify_email,
         routes::auth::resend_verification,
+        routes::auth::forgot_password,
+        routes::auth::reset_password,
         routes::auth::refresh,
         routes::auth::logout,
         routes::auth::logout_all,

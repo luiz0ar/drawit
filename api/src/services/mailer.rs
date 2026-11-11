@@ -16,6 +16,12 @@ pub trait Mailer: Send + Sync {
         to_email: &str,
         verification_link: &str,
     ) -> Result<(), AppError>;
+
+    async fn send_password_reset_email(
+        &self,
+        to_email: &str,
+        reset_link: &str,
+    ) -> Result<(), AppError>;
 }
 
 #[derive(Clone)]
@@ -115,12 +121,92 @@ impl Mailer for SmtpMailer {
         );
         Ok(())
     }
+
+    async fn send_password_reset_email(
+        &self,
+        to_email: &str,
+        reset_link: &str,
+    ) -> Result<(), AppError> {
+        let from_mailbox: Mailbox = self
+            .from_header
+            .parse()
+            .map_err(|e| AppError::Internal(format!("Invalid sender address: {e}")))?;
+
+        let to_mailbox: Mailbox = to_email
+            .parse()
+            .map_err(|e| AppError::Internal(format!("Invalid recipient address: {e}")))?;
+
+        let html_body = format!(
+            r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #0f172a; }}
+    .container {{ max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; border: 1px solid #e2e8f0; }}
+    .logo {{ font-size: 20px; font-weight: 700; color: #0f40bd; margin-bottom: 24px; }}
+    .title {{ font-size: 18px; font-weight: 600; margin-bottom: 12px; }}
+    .text {{ font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px; }}
+    .button {{ display: inline-block; background-color: #0f40bd; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 500; font-size: 14px; }}
+    .footer {{ margin-top: 32px; font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 16px; }}
+    .link-alt {{ word-break: break-all; color: #0f40bd; font-size: 12px; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">DrawIt</div>
+    <div class="title">Redefinição de senha</div>
+    <div class="text">
+      Olá!<br><br>
+      Recebemos uma solicitação para redefinir a senha da sua conta no DrawIt. Clique no botão abaixo para definir sua nova senha:
+    </div>
+    <p style="text-align: center; margin: 32px 0;">
+      <a href="{reset_link}" class="button" target="_blank" rel="noopener noreferrer">Redefinir minha senha</a>
+    </p>
+    <div class="text" style="font-size: 13px;">
+      Este link é válido por 1 hora. Se você não solicitou a redefinição de senha, nenhuma ação é necessária e sua senha continuará a mesma.
+    </div>
+    <div class="footer">
+      Caso o botão não funcione, copie e cole este link no seu navegador:<br>
+      <span class="link-alt">{reset_link}</span>
+    </div>
+  </div>
+</body>
+</html>"#
+        );
+
+        let email = Message::builder()
+            .from(from_mailbox)
+            .to(to_mailbox)
+            .subject("Redefinição de senha no DrawIt")
+            .singlepart(
+                SinglePart::builder()
+                    .header(ContentType::TEXT_HTML)
+                    .body(html_body),
+            )
+            .map_err(|e| AppError::Internal(format!("Failed to build email message: {e}")))?;
+
+        self.transport.send(email).await.map_err(|e| {
+            error!(
+                to = to_email,
+                "Failed to send password reset email via SMTP: {e}"
+            );
+            AppError::Internal(format!("SMTP delivery error: {e}"))
+        })?;
+
+        info!(
+            to = to_email,
+            "Password reset email successfully dispatched via SMTP"
+        );
+        Ok(())
+    }
 }
 
 /// In-memory/mock mailer for testing
 #[derive(Default, Clone)]
 pub struct MockMailer {
     pub sent_emails: Arc<tokio::sync::Mutex<Vec<(String, String)>>>,
+    pub sent_reset_emails: Arc<tokio::sync::Mutex<Vec<(String, String)>>>,
 }
 
 #[async_trait]
@@ -132,6 +218,16 @@ impl Mailer for MockMailer {
     ) -> Result<(), AppError> {
         let mut emails = self.sent_emails.lock().await;
         emails.push((to_email.to_string(), verification_link.to_string()));
+        Ok(())
+    }
+
+    async fn send_password_reset_email(
+        &self,
+        to_email: &str,
+        reset_link: &str,
+    ) -> Result<(), AppError> {
+        let mut emails = self.sent_reset_emails.lock().await;
+        emails.push((to_email.to_string(), reset_link.to_string()));
         Ok(())
     }
 }

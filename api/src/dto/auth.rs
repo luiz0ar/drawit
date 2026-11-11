@@ -26,6 +26,20 @@ pub struct ResendVerificationRequest {
     pub email: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    #[serde(alias = "newPassword", alias = "password")]
+    pub new_password: String,
+    #[serde(alias = "confirmPassword")]
+    pub confirm_password: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RegisterResponse {
     pub message: String,

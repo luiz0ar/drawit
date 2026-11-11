@@ -15,7 +15,6 @@ import {
   Edit2,
   Tag,
   LogOut,
-  KeyRound,
   ShieldAlert,
   Sun,
   Moon,
@@ -31,7 +30,6 @@ import {
   TagCount,
   BoardApi,
   GroupApi,
-  AuthApi,
 } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../context/ThemeContext';
@@ -65,11 +63,11 @@ const BoardGridPreview: React.FC<BoardGridPreviewProps> = ({ board, theme }) => 
             const dataUrl = generateThumbnailSvg(scene.elements, theme);
             if (dataUrl) {
               setThumb(dataUrl);
-              BoardApi.update(board.id, { thumbnail: dataUrl }).catch(() => {});
+              BoardApi.update(board.id, { thumbnail: dataUrl }).catch(() => { });
             }
           }
         })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => {
           if (isMounted) setLoading(false);
         });
@@ -146,12 +144,6 @@ export const DashboardPage: React.FC = () => {
 
   const [movingBoard, setMovingBoard] = useState<Board | null>(null);
 
-  // Password change modal
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
-
   const fetchDashboardData = useCallback(async () => {
     try {
       const isTrash = navFilter.type === 'trash';
@@ -159,8 +151,8 @@ export const DashboardPage: React.FC = () => {
         navFilter.type === 'group'
           ? navFilter.groupId
           : navFilter.type === 'ungrouped'
-          ? 'none'
-          : undefined;
+            ? 'none'
+            : undefined;
       const favParam = navFilter.type === 'favorites' ? true : undefined;
       const sortParam =
         navFilter.type === 'recent' ? 'last_opened_at:desc' : sortBy;
@@ -367,22 +359,6 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordMessage(null);
-    try {
-      await AuthApi.changePassword(currentPassword, newPassword);
-      setIsPasswordModalOpen(false);
-      setCurrentPassword('');
-      setNewPassword('');
-      navigate('/login', { replace: true });
-    } catch (err) {
-      setPasswordMessage(
-        err instanceof Error ? err.message : 'Failed to update password'
-      );
-    }
-  };
-
   const toggleTagFilter = (tag: string) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
@@ -436,11 +412,10 @@ export const DashboardPage: React.FC = () => {
           <div className="space-y-1">
             <button
               onClick={() => setNavFilter({ type: 'all' })}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${
-                navFilter.type === 'all'
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${navFilter.type === 'all'
                   ? 'bg-primary/10 text-primary font-semibold'
                   : 'text-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               <LayoutGrid className="w-4 h-4" />
               <span>All Boards</span>
@@ -448,11 +423,10 @@ export const DashboardPage: React.FC = () => {
 
             <button
               onClick={() => setNavFilter({ type: 'recent' })}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${
-                navFilter.type === 'recent'
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${navFilter.type === 'recent'
                   ? 'bg-primary/10 text-primary font-semibold'
                   : 'text-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               <Clock className="w-4 h-4" />
               <span>Recent</span>
@@ -460,11 +434,10 @@ export const DashboardPage: React.FC = () => {
 
             <button
               onClick={() => setNavFilter({ type: 'favorites' })}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${
-                navFilter.type === 'favorites'
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${navFilter.type === 'favorites'
                   ? 'bg-primary/10 text-primary font-semibold'
                   : 'text-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               <Star className="w-4 h-4" />
               <span>Favorites</span>
@@ -472,11 +445,10 @@ export const DashboardPage: React.FC = () => {
 
             <button
               onClick={() => setNavFilter({ type: 'ungrouped' })}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${
-                navFilter.type === 'ungrouped'
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${navFilter.type === 'ungrouped'
                   ? 'bg-primary/10 text-primary font-semibold'
                   : 'text-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               <FileText className="w-4 h-4" />
               <span>Ungrouped</span>
@@ -531,11 +503,10 @@ export const DashboardPage: React.FC = () => {
                 <div
                   key={g.id}
                   onClick={() => setNavFilter({ type: 'group', groupId: g.id })}
-                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                    isSelected
+                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${isSelected
                       ? 'bg-primary/10 text-primary font-semibold'
                       : 'text-foreground hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   {editingGroupId === g.id ? (
                     <input
@@ -612,11 +583,10 @@ export const DashboardPage: React.FC = () => {
                     <button
                       key={tc.tag}
                       onClick={() => toggleTagFilter(tc.tag)}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
-                        active
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-colors ${active
                           ? 'bg-primary text-primary-foreground border-primary'
                           : 'bg-muted/50 text-foreground hover:bg-muted'
-                      }`}
+                        }`}
                     >
                       <Tag className="w-2.5 h-2.5" />
                       <span>{tc.tag}</span>
@@ -632,11 +602,10 @@ export const DashboardPage: React.FC = () => {
           <div className="pt-2 border-t">
             <button
               onClick={() => setNavFilter({ type: 'trash' })}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${
-                navFilter.type === 'trash'
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg font-medium transition-colors ${navFilter.type === 'trash'
                   ? 'bg-destructive/10 text-destructive font-semibold'
                   : 'text-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               <Trash2 className="w-4 h-4" />
               <span>Trash</span>
@@ -646,13 +615,6 @@ export const DashboardPage: React.FC = () => {
 
         {/* User Footer Actions */}
         <div className="p-3 border-t space-y-1 text-xs">
-          <button
-            onClick={() => setIsPasswordModalOpen(true)}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Change Password</span>
-          </button>
           <button
             onClick={logoutAll}
             className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -708,22 +670,20 @@ export const DashboardPage: React.FC = () => {
               <button
                 title="Grid View"
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-md transition-colors ${
-                  viewMode === 'grid'
+                className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
               <button
                 title="List View"
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-colors ${
-                  viewMode === 'list'
+                className={`p-1.5 rounded-md transition-colors ${viewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <List className="w-3.5 h-3.5" />
               </button>
@@ -828,11 +788,10 @@ export const DashboardPage: React.FC = () => {
                             : 'Add to favorites'
                         }
                         onClick={(e) => handleToggleFavorite(b, e)}
-                        className={`absolute top-2.5 right-2.5 p-1.5 rounded-lg border bg-card/90 backdrop-blur transition-opacity ${
-                          b.is_favorite
+                        className={`absolute top-2.5 right-2.5 p-1.5 rounded-lg border bg-card/90 backdrop-blur transition-opacity ${b.is_favorite
                             ? 'text-amber-500 opacity-100'
                             : 'text-muted-foreground opacity-0 group-hover:opacity-100'
-                        }`}
+                          }`}
                       >
                         <Star className="w-3.5 h-3.5 fill-current" />
                       </button>
@@ -1004,11 +963,10 @@ export const DashboardPage: React.FC = () => {
                         <button
                           title="Favorite"
                           onClick={(e) => handleToggleFavorite(b, e)}
-                          className={`p-1 rounded ${
-                            b.is_favorite
+                          className={`p-1 rounded ${b.is_favorite
                               ? 'text-amber-500'
                               : 'text-muted-foreground hover:text-foreground'
-                          }`}
+                            }`}
                         >
                           <Star className="w-3.5 h-3.5 fill-current" />
                         </button>
@@ -1209,59 +1167,6 @@ export const DashboardPage: React.FC = () => {
                 Move folder and its boards to Trash
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Change Password Modal */}
-      {isPasswordModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-card border rounded-xl shadow-xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm">Change Password</h3>
-              <button
-                onClick={() => setIsPasswordModalOpen(false)}
-                className="p-1 rounded hover:bg-muted"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleChangePassword} className="space-y-3">
-              <input
-                type="password"
-                required
-                placeholder="Current password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border bg-background"
-              />
-              <input
-                type="password"
-                required
-                placeholder="New password (min 6 chars)"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border bg-background"
-              />
-              {passwordMessage && (
-                <p className="text-xs text-destructive">{passwordMessage}</p>
-              )}
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPasswordModalOpen(false)}
-                  className="px-3 py-1.5 text-xs rounded-lg border hover:bg-muted"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold"
-                >
-                  Update Password
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

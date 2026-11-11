@@ -15,6 +15,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { Link, navigate } from '../../lib/router';
 import { useTheme } from '../../context/ThemeContext';
 import { ApiError } from '../../lib/api';
+import { validatePassword } from '../../lib/passwordValidation';
+import { PasswordRequirements } from './components/PasswordRequirements';
 
 export const RegisterPage: React.FC = () => {
   const { register } = useAuthStore();
@@ -47,16 +49,18 @@ export const RegisterPage: React.FC = () => {
       setError('Please provide a valid email address.');
       return;
     }
-    if (password.length < 6 || password.length > 128) {
-      setError('Password must be between 6 and 128 characters.');
-      return;
-    }
     if (!confirmPassword) {
       setError('Please confirm your password.');
       return;
     }
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
+      return;
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      setError('Password does not meet all security requirements.');
       return;
     }
 
@@ -132,7 +136,7 @@ export const RegisterPage: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="space-y-1.5">
             <label
               htmlFor="register-username"
@@ -194,7 +198,7 @@ export const RegisterPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 required
-                placeholder="At least 6 characters"
+                placeholder="Enter a secure password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-9 pr-10 py-2 text-sm rounded-lg border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -213,6 +217,9 @@ export const RegisterPage: React.FC = () => {
                 )}
               </button>
             </div>
+            {password.length > 0 && (
+              <PasswordRequirements password={password} className="mt-2" />
+            )}
           </div>
 
           <div className="space-y-1.5">

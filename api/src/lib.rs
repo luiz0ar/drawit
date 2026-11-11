@@ -116,6 +116,8 @@ pub fn create_router(state: AppState) -> Router {
             "/auth/resend-verification",
             post(routes::auth::resend_verification),
         )
+        .route("/auth/forgot-password", post(routes::auth::forgot_password))
+        .route("/auth/reset-password", post(routes::auth::reset_password))
         .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout));
 

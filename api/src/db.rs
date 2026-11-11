@@ -149,6 +149,46 @@ pub async fn ensure_indexes(db: &Database) -> mongodb::error::Result<()> {
         )
         .await?;
 
+    // 7. `password_resets` collection: unique token_hash, TTL, and email/user lookup
+    let resets_col = db.collection::<mongodb::bson::Document>("password_resets");
+    let reset_token_hash_options = IndexOptions::builder()
+        .unique(true)
+        .name("idx_password_resets_token_hash_unique".to_string())
+        .build();
+    resets_col
+        .create_index(
+            IndexModel::builder()
+                .keys(doc! { "token_hash": 1 })
+                .options(reset_token_hash_options)
+                .build(),
+        )
+        .await?;
+
+    let reset_ttl_options = IndexOptions::builder()
+        .expire_after(std::time::Duration::from_secs(0))
+        .name("idx_password_resets_ttl".to_string())
+        .build();
+    resets_col
+        .create_index(
+            IndexModel::builder()
+                .keys(doc! { "expires_at": 1 })
+                .options(reset_ttl_options)
+                .build(),
+        )
+        .await?;
+
+    let reset_email_options = IndexOptions::builder()
+        .name("idx_password_resets_email_created".to_string())
+        .build();
+    resets_col
+        .create_index(
+            IndexModel::builder()
+                .keys(doc! { "email": 1, "created_at": -1 })
+                .options(reset_email_options)
+                .build(),
+        )
+        .await?;
+
     info!("All MongoDB indexes verified successfully.");
     Ok(())
 }

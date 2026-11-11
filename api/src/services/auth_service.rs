@@ -8,19 +8,24 @@ use std::sync::Arc;
 use crate::{
     dto::{
         AuthResponse, ChangePasswordRequest, LoginRequest, RegisterRequest, RegisterResponse,
-        UserDto,
+        ResetPasswordRequest, UserDto,
     },
     error::{AppError, InvalidParam},
-    models::{RefreshToken, User},
-    services::{verification_service::VerificationService, PasswordService, TokenService},
+    models::{PasswordReset, RefreshToken, User},
+    services::{
+        mailer::Mailer, verification_service::VerificationService, PasswordService, TokenService,
+    },
     AppConfig,
 };
 
 pub struct AuthService {
     users_col: Collection<User>,
     tokens_col: Collection<RefreshToken>,
+    resets_col: Collection<PasswordReset>,
     token_service: TokenService,
     verification_service: Arc<VerificationService>,
+    mailer: Arc<dyn Mailer>,
+    frontend_origin: String,
     refresh_exp_days: i64,
     access_exp_minutes: i64,
 }
@@ -30,15 +35,19 @@ impl AuthService {
         db: &Database,
         config: &AppConfig,
         verification_service: Arc<VerificationService>,
+        mailer: Arc<dyn Mailer>,
     ) -> Self {
         Self {
             users_col: db.collection("users"),
             tokens_col: db.collection("refresh_tokens"),
+            resets_col: db.collection("password_resets"),
             token_service: TokenService::new(
                 config.jwt_secret.clone(),
                 config.jwt_expiration_minutes,
             ),
             verification_service,
+            mailer,
+            frontend_origin: config.frontend_origin.clone(),
             refresh_exp_days: config.refresh_token_expiration_days,
             access_exp_minutes: config.jwt_expiration_minutes,
         }
@@ -90,12 +99,7 @@ impl AuthService {
                 reason: "Please provide a valid email address.".to_string(),
             });
         }
-        if password.len() < 6 {
-            invalid_params.push(InvalidParam {
-                name: "password".to_string(),
-                reason: "Password must have at least 6 characters.".to_string(),
-            });
-        }
+        invalid_params.extend(PasswordService::validate_complexity(&password, "password"));
         if password != confirm_password {
             invalid_params.push(InvalidParam {
                 name: "confirmPassword".to_string(),
@@ -368,11 +372,10 @@ impl AuthService {
         user_id: &str,
         req: ChangePasswordRequest,
     ) -> Result<(), AppError> {
-        if req.new_password.len() < 6 {
-            return Err(AppError::Validation(vec![InvalidParam {
-                name: "new_password".to_string(),
-                reason: "New password must have at least 6 characters.".to_string(),
-            }]));
+        let complexity_errors =
+            PasswordService::validate_complexity(&req.new_password, "new_password");
+        if !complexity_errors.is_empty() {
+            return Err(AppError::Validation(complexity_errors));
         }
 
         let user = self
@@ -407,6 +410,156 @@ impl AuthService {
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         self.logout_all(user_id).await?;
+        Ok(())
+    }
+
+    /// Request password reset for the given email address.
+    /// Anti-enumeration: returns Ok(()) even if user is not found.
+    /// Rate limit: 90 seconds cooldown per email.
+    pub async fn request_password_reset(&self, email: &str) -> Result<(), AppError> {
+        let clean_email = email.trim().to_lowercase();
+        let now = Utc::now();
+
+        // 1. Check rate limit / cooldown
+        let latest_reset = self
+            .resets_col
+            .find_one(doc! { "email": &clean_email })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        if let Some(recent) = latest_reset {
+            let elapsed = now.signed_duration_since(recent.created_at).num_seconds();
+            if elapsed < 90 {
+                let remaining = (90 - elapsed).max(1) as u64;
+                return Err(AppError::TooManyRequests {
+                    retry_after_seconds: remaining,
+                });
+            }
+        }
+
+        // 2. Lookup user
+        let user_opt = self
+            .users_col
+            .find_one(doc! { "email": &clean_email })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let user = match user_opt {
+            Some(u) => u,
+            None => {
+                // Anti-enumeration: small simulated latency
+                tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                return Ok(());
+            }
+        };
+
+        // 3. Invalidate previous unused reset tokens for this user
+        let _ = self
+            .resets_col
+            .update_many(
+                doc! { "user_id": &user.id, "used": false },
+                doc! { "$set": { "used": true } },
+            )
+            .await;
+
+        // 4. Generate cryptographically secure random token (32 bytes = 64 hex characters)
+        let (raw_token, token_hash) = TokenService::generate_opaque_token();
+
+        let expires_at = now + chrono::Duration::hours(1);
+        let reset_doc =
+            PasswordReset::new(user.id.clone(), user.email.clone(), token_hash, expires_at);
+
+        self.resets_col
+            .insert_one(&reset_doc)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // 5. Send branded reset email
+        let reset_link = format!(
+            "{}/reset-password?token={}",
+            self.frontend_origin, raw_token
+        );
+        self.mailer
+            .send_password_reset_email(&user.email, &reset_link)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Redeem password reset token and update user password.
+    /// Validates password complexity, marks token used, and revokes all active sessions.
+    pub async fn reset_password(&self, req: ResetPasswordRequest) -> Result<(), AppError> {
+        let mut invalid_params = Vec::new();
+
+        if req.new_password != req.confirm_password {
+            invalid_params.push(InvalidParam {
+                name: "confirmPassword".to_string(),
+                reason: "Passwords do not match.".to_string(),
+            });
+        }
+
+        invalid_params.extend(PasswordService::validate_complexity(
+            &req.new_password,
+            "new_password",
+        ));
+
+        if !invalid_params.is_empty() {
+            return Err(AppError::Validation(invalid_params));
+        }
+
+        let token_hash = VerificationService::hash_token(&req.token);
+        let now = Utc::now();
+
+        let reset_record = self
+            .resets_col
+            .find_one(doc! { "token_hash": &token_hash })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .ok_or_else(|| {
+                AppError::BadRequest("Invalid or expired password reset link.".to_string())
+            })?;
+
+        if reset_record.used || reset_record.expires_at < now {
+            return Err(AppError::BadRequest(
+                "Invalid or expired password reset link.".to_string(),
+            ));
+        }
+
+        // Hash new password with Argon2id
+        let new_hash = PasswordService::hash_password(req.new_password).await?;
+
+        // Update user password and ensure email is verified
+        self.users_col
+            .update_one(
+                doc! { "_id": &reset_record.user_id },
+                doc! {
+                    "$set": {
+                        "password_hash": new_hash,
+                        "email_verified": true,
+                        "updated_at": BsonDateTime::from_millis(now.timestamp_millis()),
+                    }
+                },
+            )
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // Mark reset token as used
+        let _ = self
+            .resets_col
+            .update_one(
+                doc! { "_id": &reset_record.id },
+                doc! {
+                    "$set": {
+                        "used": true,
+                        "used_at": BsonDateTime::from_millis(now.timestamp_millis()),
+                    }
+                },
+            )
+            .await;
+
+        // Revoke all existing sessions
+        self.logout_all(&reset_record.user_id).await?;
+
         Ok(())
     }
 

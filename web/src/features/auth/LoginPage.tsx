@@ -152,7 +152,7 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="space-y-1.5">
             <label
               htmlFor="login-email"
@@ -227,6 +227,12 @@ export const LoginPage: React.FC = () => {
               />
               <span>Remember me</span>
             </label>
+            <Link
+              to="/forgot-password"
+              className="text-xs text-primary hover:underline font-medium"
+            >
+              Forgot password?
+            </Link>
           </div>
 
           <button

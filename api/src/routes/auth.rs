@@ -7,8 +7,8 @@ use axum::{
 
 use crate::{
     dto::{
-        ChangePasswordRequest, LoginRequest, RegisterRequest, ResendVerificationRequest,
-        VerifyEmailRequest,
+        ChangePasswordRequest, ForgotPasswordRequest, LoginRequest, RegisterRequest,
+        ResendVerificationRequest, ResetPasswordRequest, VerifyEmailRequest,
     },
     error::AppError,
     services::{AuthService, Claims},
@@ -59,8 +59,12 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service =
-        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
     let response = auth_service.register(req).await?;
 
     Ok((StatusCode::ACCEPTED, Json(response)))
@@ -82,8 +86,12 @@ pub async fn login(
     headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service =
-        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
@@ -148,14 +156,18 @@ pub async fn resend_verification(
     State(state): State<AppState>,
     Json(req): Json<ResendVerificationRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service =
-        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
     auth_service.resend_verification(&req.email).await?;
 
     Ok((
         StatusCode::ACCEPTED,
         Json(serde_json::json!({
-            "message": "If that email address is registered and unverified, a new verification link has been dispatched."
+            "message": "If the informed email address is registered and unverified, a new verification link has been dispatched."
         })),
     ))
 }
@@ -176,8 +188,12 @@ pub async fn refresh(
     let raw_refresh_token = extract_refresh_token_from_cookies(&headers)
         .ok_or_else(|| AppError::Unauthorized("Refresh token cookie is missing.".to_string()))?;
 
-    let auth_service =
-        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
@@ -207,8 +223,12 @@ pub async fn logout(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     if let Some(raw_refresh_token) = extract_refresh_token_from_cookies(&headers) {
-        let auth_service =
-            AuthService::new(&state.db, &state.config, state.verification_service.clone());
+        let auth_service = AuthService::new(
+            &state.db,
+            &state.config,
+            state.verification_service.clone(),
+            state.mailer.clone(),
+        );
         let _ = auth_service.logout(raw_refresh_token).await;
     }
 
@@ -234,8 +254,12 @@ pub async fn logout_all(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service =
-        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
     auth_service.logout_all(&claims.sub).await?;
 
     Ok((
@@ -263,13 +287,78 @@ pub async fn change_password(
     Extension(claims): Extension<Claims>,
     Json(req): Json<ChangePasswordRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth_service =
-        AuthService::new(&state.db, &state.config, state.verification_service.clone());
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
     auth_service.change_password(&claims.sub, req).await?;
 
     Ok((
         StatusCode::OK,
         [(header::SET_COOKIE, build_clear_refresh_cookie())],
         Json(serde_json::json!({ "message": "Password changed successfully" })),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/forgot-password",
+    request_body = ForgotPasswordRequest,
+    responses(
+        (status = 202, description = "Password reset instructions dispatched if email exists"),
+        (status = 429, description = "Too Many Requests - cooldown active", body = ProblemDetails)
+    ),
+    tag = "Auth"
+)]
+pub async fn forgot_password(
+    State(state): State<AppState>,
+    Json(req): Json<ForgotPasswordRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
+    auth_service.request_password_reset(&req.email).await?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "message": "If the informed email address is registered, a password reset link has been dispatched."
+        })),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/reset-password",
+    request_body = ResetPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset successful; all previous sessions revoked"),
+        (status = 400, description = "Invalid or expired token / password mismatch", body = ProblemDetails),
+        (status = 422, description = "Unprocessable Entity - password complexity not met", body = ProblemDetails)
+    ),
+    tag = "Auth"
+)]
+pub async fn reset_password(
+    State(state): State<AppState>,
+    Json(req): Json<ResetPasswordRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let auth_service = AuthService::new(
+        &state.db,
+        &state.config,
+        state.verification_service.clone(),
+        state.mailer.clone(),
+    );
+    auth_service.reset_password(req).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "message": "Password reset successfully. You may now sign in with your new password."
+        })),
     ))
 }

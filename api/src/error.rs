@@ -94,6 +94,9 @@ pub enum AppError {
     #[error("Email not verified for {email}")]
     EmailNotVerified { email: String },
 
+    #[error("Bad Request: {0}")]
+    BadRequest(String),
+
     #[error("Too many requests, retry after {retry_after_seconds}s")]
     TooManyRequests { retry_after_seconds: u64 },
 
@@ -140,6 +143,10 @@ impl IntoResponse for AppError {
             AppError::Forbidden(detail) => (
                 StatusCode::FORBIDDEN,
                 ProblemDetails::new(403, "FORBIDDEN", "Forbidden", detail, ""),
+            ),
+            AppError::BadRequest(detail) => (
+                StatusCode::BAD_REQUEST,
+                ProblemDetails::new(400, "BAD_REQUEST", "Bad Request", detail, ""),
             ),
             AppError::EmailNotVerified { email } => (
                 StatusCode::FORBIDDEN,

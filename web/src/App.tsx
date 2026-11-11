@@ -6,6 +6,8 @@ import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { CheckEmailPage } from './features/auth/CheckEmailPage';
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { Whiteboard } from './canvas/Whiteboard';
 
@@ -24,7 +26,9 @@ export const App: React.FC = () => {
       pathname === '/login' ||
       pathname === '/register' ||
       pathname === '/check-email' ||
-      pathname === '/verify-email';
+      pathname === '/verify-email' ||
+      pathname === '/forgot-password' ||
+      pathname === '/reset-password';
 
     if (!isAuthenticated && !isAuthRoute) {
       navigate('/login', { replace: true });
@@ -71,6 +75,14 @@ export const App: React.FC = () => {
 
   if (pathname === '/verify-email') {
     return <VerifyEmailPage />;
+  }
+
+  if (pathname === '/forgot-password') {
+    return <ForgotPasswordPage />;
+  }
+
+  if (pathname === '/reset-password') {
+    return <ResetPasswordPage />;
   }
 
   if (!isAuthenticated) {

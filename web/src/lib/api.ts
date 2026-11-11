@@ -19,6 +19,22 @@ export interface RegisterResponse {
   email: string;
 }
 
+export interface ForgotPasswordResponse {
+  message: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+  confirmPassword: string;
+  new_password?: string;
+  confirm_password?: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
@@ -261,6 +277,22 @@ export const AuthApi = {
     request<{ message: string }>('/auth/resend-verification', {
       method: 'POST',
       body: JSON.stringify({ email }),
+    }),
+
+  forgotPassword: (email: string): Promise<ForgotPasswordResponse> =>
+    request<ForgotPasswordResponse>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (payload: ResetPasswordRequest): Promise<ResetPasswordResponse> =>
+    request<ResetPasswordResponse>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: payload.token,
+        new_password: payload.new_password || payload.password,
+        confirm_password: payload.confirm_password || payload.confirmPassword,
+      }),
     }),
 
   refresh: async (): Promise<AuthResponse> => {

@@ -23,4 +23,4 @@ COPY src ./src
 EXPOSE 8080
 
 # Executar com cargo-watch para reconstrução automática a cada mudança em src
-CMD ["cargo", "watch", "-x", "run", "-w", "src"]
+CMD ["cargo", "watch", "--poll", "-x", "run", "-w", "src"]
