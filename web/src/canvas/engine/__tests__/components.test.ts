@@ -18,6 +18,14 @@ describe('IT Components & Lucide rendering', () => {
     expect(cache.iconNodes.length).toBe(3);
   });
 
+  it('uses Columns3 icon for queue component', () => {
+    const queue = IT_COMPONENTS.queue;
+    expect(queue).toBeDefined();
+    expect(queue.key).toBe('queue');
+    expect(queue.iconName).toBe('Columns3');
+    expect(queue.iconNodes.length).toBe(3);
+  });
+
   it('draws ellipse for database icon without throwing', () => {
     const mockCtx = {
       save: vi.fn(),

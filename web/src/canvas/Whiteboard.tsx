@@ -36,7 +36,7 @@ import {
   Database,
   Layers,
   HardDrive,
-  ListOrdered,
+  Columns3,
   Activity,
   Cloud,
   Radio,
@@ -92,7 +92,7 @@ const COMPONENT_ICONS: Record<string, React.ComponentType<{ className?: string }
   database: Database,
   cache: Layers,
   object_storage: HardDrive,
-  queue: ListOrdered,
+  queue: Columns3,
   event_stream: Activity,
   cloud: Cloud,
   cdn: Radio,
@@ -944,17 +944,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                             handleToolSelect(comp.key as Tool);
                             setIsComponentLibraryOpen(false);
                           }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-2 ${
-                            isSelected
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'bg-muted/30 hover:bg-muted border-transparent text-foreground'
-                          }`}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-2 ${isSelected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-muted/30 hover:bg-muted border-transparent text-foreground'
+                            }`}
                         >
                           {Icon && (
                             <Icon
-                              className={`w-3.5 h-3.5 shrink-0 ${
-                                isSelected ? 'text-primary-foreground' : 'text-primary'
-                              }`}
+                              className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-primary-foreground' : 'text-primary'
+                                }`}
                             />
                           )}
                           <span className="truncate">{comp.name}</span>
@@ -1013,13 +1011,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
             viewport.panY +
             (editingElement.y +
               (editingElement.type === 'triangle' ? editingElement.height * 0.25 : 8)) *
-              zoom;
+            zoom;
           width = Math.max(80, (editingElement.width - 16) * zoom);
           height = Math.max(
             36,
             (editingElement.height -
               (editingElement.type === 'triangle' ? editingElement.height * 0.35 : 16)) *
-              zoom
+            zoom
           );
         }
 
@@ -1057,7 +1055,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                 }
               }}
               onBlur={() => handleCommitInlineText(false)}
-              placeholder={editingElement.type === 'text' ? 'Digite o texto...' : 'Rótulo...'}
               style={{
                 fontSize: `${fontSize}px`,
                 lineHeight: `${fontSize * 1.3}px`,
@@ -1067,8 +1064,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                   (editingElement as any).fontFamily === 'mono'
                     ? 'monospace'
                     : (editingElement as any).fontFamily === 'serif'
-                    ? 'serif'
-                    : 'sans-serif',
+                      ? 'serif'
+                      : 'sans-serif',
               }}
               className="w-full h-full min-h-[32px] resize-none overflow-hidden select-text cursor-text bg-background/95 dark:bg-card/95 backdrop-blur-sm border-2 border-primary rounded-lg px-2.5 py-1 outline-none shadow-2xl focus:ring-2 focus:ring-primary/40 font-medium"
             />

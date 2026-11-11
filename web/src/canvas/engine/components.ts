@@ -732,48 +732,31 @@ export const IT_COMPONENTS: Record<string, ITComponentDefinition> = {
     'queue',
     'Message Queue',
     'messaging',
-    'ListOrdered',
+    'Columns3',
     [
       [
-        "path",
+        "rect",
         {
-          "d": "M10 12h11",
-          "key": "6m4ad9"
+          "width": "18",
+          "height": "18",
+          "x": "3",
+          "y": "3",
+          "rx": "2",
+          "key": "afitv7"
         }
       ],
       [
         "path",
         {
-          "d": "M10 18h11",
-          "key": "11hvi2"
+          "d": "M9 3v18",
+          "key": "fh3hqa"
         }
       ],
       [
         "path",
         {
-          "d": "M10 6h11",
-          "key": "c7qv1k"
-        }
-      ],
-      [
-        "path",
-        {
-          "d": "M4 10h2",
-          "key": "16xx2s"
-        }
-      ],
-      [
-        "path",
-        {
-          "d": "M4 6h1v4",
-          "key": "cnovpq"
-        }
-      ],
-      [
-        "path",
-        {
-          "d": "M6 18H4c0-1 2-2 2-3s-1-1.5-2-1",
-          "key": "m9a95d"
+          "d": "M15 3v18",
+          "key": "14nvp0"
         }
       ]
     ],
