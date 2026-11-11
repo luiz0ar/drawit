@@ -1,8 +1,11 @@
 packages:
   - 'web'
 
+minimumReleaseAge: 0
+
 allowBuilds:
   esbuild: true
 
 onlyBuiltDependencies:
   - esbuild
+

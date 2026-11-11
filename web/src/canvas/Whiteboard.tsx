@@ -1165,7 +1165,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ boardId }) => {
                 onClick={handleExportPng}
                 className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors flex items-center justify-between"
               >
-                <span>Export as PNG (2x)</span>
+                <span>Export as PNG</span>
                 <span className="text-[10px] text-muted-foreground font-mono">HiDPI</span>
               </button>
               <button

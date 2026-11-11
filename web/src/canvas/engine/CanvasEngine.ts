@@ -374,6 +374,20 @@ export class CanvasEngine {
   }
 
   /**
+   * Selects all elements on the canvas
+   */
+  public selectAll(): void {
+    if (this.elements.length === 0) return;
+    this.selectedIds.clear();
+    for (const el of this.elements) {
+      this.selectedIds.add(el.id);
+    }
+    this.setTool('select');
+    this.isDirty = true;
+    this.notifySelectionChange();
+  }
+
+  /**
    * RF-E10: Copy selected elements to internal clipboard
    */
   public copySelected() {
@@ -818,17 +832,51 @@ export class CanvasEngine {
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
 
-    const rect = this.canvas.getBoundingClientRect();
-    const screenPoint: ScreenPoint = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
+    // Zoom with Ctrl / Cmd + Scroll (or trackpad pinch-zoom)
+    if (e.ctrlKey || e.metaKey) {
+      const rect = this.canvas.getBoundingClientRect();
+      const screenPoint: ScreenPoint = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
 
-    const normalizedDelta = normalizeWheelDelta(e);
-    const zoomFactor = Math.pow(0.999, normalizedDelta);
-    const targetZoom = this.viewport.zoom * zoomFactor;
+      const normalizedDelta = normalizeWheelDelta(e);
+      const zoomFactor = Math.pow(0.999, normalizedDelta);
+      const targetZoom = this.viewport.zoom * zoomFactor;
 
-    this.viewport = zoomAtPoint(screenPoint, this.viewport, targetZoom);
+      this.viewport = zoomAtPoint(screenPoint, this.viewport, targetZoom);
+      this.isDirty = true;
+      this.callbacks.onViewportChange?.(this.viewport);
+      return;
+    }
+
+    // Horizontal pan with Shift + Scroll (Down: right, Up: left)
+    if (e.shiftKey) {
+      const rawDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      let scrollAmount = rawDelta;
+      if (e.deltaMode === 1) {
+        scrollAmount *= 20;
+      } else if (e.deltaMode === 2) {
+        scrollAmount *= 500;
+      }
+      this.viewport.panX -= scrollAmount;
+      this.isDirty = true;
+      this.callbacks.onViewportChange?.(this.viewport);
+      return;
+    }
+
+    // Vertical pan with regular Scroll (Down: down, Up: up)
+    let scrollAmountX = e.deltaX;
+    let scrollAmountY = e.deltaY;
+    if (e.deltaMode === 1) {
+      scrollAmountX *= 20;
+      scrollAmountY *= 20;
+    } else if (e.deltaMode === 2) {
+      scrollAmountX *= 500;
+      scrollAmountY *= 500;
+    }
+    this.viewport.panX -= scrollAmountX;
+    this.viewport.panY -= scrollAmountY;
     this.isDirty = true;
     this.callbacks.onViewportChange?.(this.viewport);
   };
@@ -1676,8 +1724,13 @@ export class CanvasEngine {
       this.deleteSelected();
     }
 
-    // Undo / Redo / Copy / Paste / Grouping / Layer ordering shortcuts
+    // Undo / Redo / Copy / Paste / Select All / Grouping / Layer ordering shortcuts
     if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        this.selectAll();
+        return;
+      }
       if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         e.preventDefault();
         this.undo();
@@ -1721,8 +1774,8 @@ export class CanvasEngine {
       return;
     }
 
-    if (e.key === 'v' || e.key === 'V') this.setTool('select');
-    if (e.key === 'h' || e.key === 'H') this.setTool('hand');
+    if (e.key === '1' || e.key === 'v' || e.key === 'V') this.setTool('select');
+    if (e.key === '2' || e.key === 'h' || e.key === 'H') this.setTool('hand');
     if (e.key === 'r' || e.key === 'R') this.setTool('rectangle');
     if (e.key === 'o' || e.key === 'O') this.setTool('ellipse');
     if (e.key === 'd' || e.key === 'D') this.setTool('diamond');

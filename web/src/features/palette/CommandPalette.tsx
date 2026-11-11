@@ -83,14 +83,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         comp.category === 'data'
           ? Database
           : comp.category === 'backend'
-          ? Server
-          : comp.category === 'clients'
-          ? Globe
-          : comp.category === 'messaging'
-          ? Layers
-          : comp.category === 'infra'
-          ? Cloud
-          : Cpu,
+            ? Server
+            : comp.category === 'clients'
+              ? Globe
+              : comp.category === 'messaging'
+                ? Layers
+                : comp.category === 'infra'
+                  ? Cloud
+                  : Cpu,
       action: () => onSelectTool(comp.key as Tool),
     }));
 
@@ -238,7 +238,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Export / Import
       {
         id: 'export-png',
-        title: 'Export as PNG (2x HiDPI)',
+        title: 'Export as PNG',
         category: 'Export / Import',
         icon: Download,
         action: onExportPng,
@@ -374,11 +374,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onClose();
                   }}
                   onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
-                    isSelected
+                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${isSelected
                       ? 'bg-primary text-primary-foreground font-medium'
                       : 'text-foreground hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <Icon className="w-4 h-4 shrink-0" />
@@ -387,19 +386,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[10px] uppercase tracking-wider ${
-                        isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                      }`}
+                      className={`text-[10px] uppercase tracking-wider ${isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                        }`}
                     >
                       {cmd.category}
                     </span>
                     {cmd.shortcut && (
                       <kbd
-                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                          isSelected
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${isSelected
                             ? 'bg-primary-foreground/20 border-primary-foreground/30 text-primary-foreground'
                             : 'bg-muted border-border text-muted-foreground'
-                        }`}
+                          }`}
                       >
                         {cmd.shortcut}
                       </kbd>

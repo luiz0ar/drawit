@@ -16,8 +16,8 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
     {
       title: 'Tools & Creation',
       shortcuts: [
-        { key: 'V', desc: 'Select / Pointer tool' },
-        { key: 'H', desc: 'Hand / Pan canvas tool' },
+        { key: 'V / 1', desc: 'Select / Pointer tool' },
+        { key: 'H / 2', desc: 'Hand / Pan canvas tool' },
         { key: 'Space + Drag', desc: 'Temporary pan while in any tool' },
         { key: 'R', desc: 'Rectangle shape' },
         { key: 'O', desc: 'Ellipse / Circle shape' },
@@ -32,14 +32,17 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
     {
       title: 'Navigation & Viewport',
       shortcuts: [
-        { key: 'Mouse Wheel', desc: 'Zoom centered at mouse cursor (10% to 800%)' },
-        { key: 'Middle Click + Drag', desc: 'Pan canvas' },
+        { key: 'Scroll', desc: 'Pan canvas vertically (Up / Down)' },
+        { key: 'Ctrl + Scroll', desc: 'Zoom in / out centered at mouse cursor (10% to 800%)' },
+        { key: 'Shift + Scroll', desc: 'Pan canvas horizontally (Down: right, Up: left)' },
+        { key: 'Middle Click + Drag', desc: 'Pan canvas freely' },
         { key: 'Double-Click Element', desc: 'Edit element text / label in-place' },
       ],
     },
     {
       title: 'Editing, History & Arrangement',
       shortcuts: [
+        { key: 'Ctrl + A', desc: 'Select all elements in the board' },
         { key: 'Ctrl + Z', desc: 'Undo last action (50-level stack)' },
         { key: 'Ctrl + Y / Ctrl + Shift + Z', desc: 'Redo action' },
         { key: 'Ctrl + C', desc: 'Copy selected elements' },
