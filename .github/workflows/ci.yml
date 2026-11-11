@@ -43,14 +43,14 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: web/package.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Instalar dependências
-        run: npm --prefix web ci || npm --prefix web install
+        run: npm --prefix web ci
 
-      - name: Checagem de Tipagem TypeScript
+      - name: Checagem de Tipagem TypeScript e Build
         run: npm --prefix web run build
 
       - name: Testes Unitários (Vitest)
-        run: npm --prefix web run test -- --run
+        run: npm --prefix web test
 

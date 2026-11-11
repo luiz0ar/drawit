@@ -56,9 +56,7 @@ impl VerificationService {
         // 1. Check cooldown: query most recent verification for this user
         let latest = self
             .verifications_col
-            .find_one(
-                doc! { "user_id": user_id },
-            )
+            .find_one(doc! { "user_id": user_id })
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 

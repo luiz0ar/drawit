@@ -109,6 +109,32 @@ export function getElementBoundingBox(element: CanvasElement): BoundingBox {
       return { minX, minY, maxX, maxY };
     }
   }
+
+  if (element.type === 'freehand') {
+    const pts = (element as FreehandElement).points || [];
+    if (pts.length > 0) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const [px, py] of pts) {
+        const wx = element.x + px;
+        const wy = element.y + py;
+        if (wx < minX) minX = wx;
+        if (wy < minY) minY = wy;
+        if (wx > maxX) maxX = wx;
+        if (wy > maxY) maxY = wy;
+      }
+      const pad = (element.style.strokeWidth || 2) * 2;
+      return {
+        minX: minX - pad,
+        minY: minY - pad,
+        maxX: maxX + pad,
+        maxY: maxY + pad,
+      };
+    }
+  }
+
   const minX = Math.min(element.x, element.x + element.width);
   const maxX = Math.max(element.x, element.x + element.width);
   const minY = Math.min(element.y, element.y + element.height);

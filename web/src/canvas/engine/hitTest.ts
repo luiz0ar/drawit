@@ -1,5 +1,6 @@
 import { CanvasElement } from './types';
 import { WorldPoint, ScreenPoint, ViewportTransform, worldToScreen } from './coordinates';
+import { hitTestFreehand } from './freehand';
 
 export type ResizeHandle =
   | 'nw'
@@ -97,6 +98,41 @@ export function elementIntersectsMarquee(
       minY = Math.min(minY, p.y);
       maxX = Math.max(maxX, p.x);
       maxY = Math.max(maxY, p.y);
+    }
+    return !(
+      maxX < marquee.minX ||
+      minX > marquee.maxX ||
+      maxY < marquee.minY ||
+      minY > marquee.maxY
+    );
+  }
+
+  if (element.type === 'freehand') {
+    const pts: [number, number, number?][] = (element as any).points || [];
+    if (pts.length === 0) return false;
+    for (const [px, py] of pts) {
+      const wx = element.x + px;
+      const wy = element.y + py;
+      if (
+        wx >= marquee.minX &&
+        wx <= marquee.maxX &&
+        wy >= marquee.minY &&
+        wy <= marquee.maxY
+      ) {
+        return true;
+      }
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [px, py] of pts) {
+      const wx = element.x + px;
+      const wy = element.y + py;
+      minX = Math.min(minX, wx);
+      minY = Math.min(minY, wy);
+      maxX = Math.max(maxX, wx);
+      maxY = Math.max(maxY, wy);
     }
     return !(
       maxX < marquee.minX ||
@@ -274,8 +310,9 @@ export function hitTestElement(
     case 'component':
     case 'text':
     case 'sticky':
-    case 'freehand':
       return hitTestRectangle(localPoint, element, threshold);
+    case 'freehand':
+      return hitTestFreehand(localPoint, element as any, threshold);
     case 'line':
       return hitTestLine(localPoint, element, threshold + 2);
     case 'ellipse':

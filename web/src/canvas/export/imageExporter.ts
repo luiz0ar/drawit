@@ -1,6 +1,11 @@
 import { CanvasElement } from '../engine/types';
 import { IT_COMPONENTS } from '../engine/components';
 import { getDefaultCurveControlPoint } from '../engine/hitTest';
+import {
+  getFreeDrawOptions,
+  getFreeDrawStrokePoints,
+  getFreeDrawSvgPath,
+} from '../engine/freehand';
 
 export interface ExportBounds {
   minX: number;
@@ -22,7 +27,15 @@ export function computeSceneBounds(elements: CanvasElement[], padding = 20): Exp
   let maxY = -Infinity;
 
   for (const el of elements) {
-    if (el.type === 'arrow') {
+    if (el.type === 'freehand') {
+      const pts: [number, number, number?][] = (el as any).points || [];
+      for (const [px, py] of pts) {
+        minX = Math.min(minX, el.x + px);
+        minY = Math.min(minY, el.y + py);
+        maxX = Math.max(maxX, el.x + px);
+        maxY = Math.max(maxY, el.y + py);
+      }
+    } else if (el.type === 'arrow') {
       const arrow = el as any;
       if (Array.isArray(arrow.points)) {
         for (const pt of arrow.points) {
@@ -171,6 +184,25 @@ export function exportToSvgString(
             const my = (first.y + last.y) / 2;
             svgContent += `  <text x="${mx}" y="${my}" font-family="sans-serif" font-size="12" font-weight="600" text-anchor="middle" dominant-baseline="middle" fill="${stroke}">${arrow.label}</text>\n`;
           }
+        }
+        break;
+      }
+
+      case 'freehand': {
+        const pts: [number, number, number?][] = (el as any).points || [];
+        if (pts.length === 0) break;
+        const baseSize = Math.max(3, strokeWidth * 3.5);
+        if (pts.length === 1) {
+          svgContent += `  <circle cx="${el.x + pts[0][0]}" cy="${el.y + pts[0][1]}" r="${(baseSize / 2).toFixed(2)}" fill="${stroke}" opacity="${opacity}" />\n`;
+          break;
+        }
+        const options = getFreeDrawOptions(strokeWidth, true);
+        const strokePoints = getFreeDrawStrokePoints(pts, options);
+        if (strokePoints.length > 0) {
+          const svgPath = getFreeDrawSvgPath(strokePoints);
+          svgContent += `  <g transform="translate(${el.x}, ${el.y})">\n`;
+          svgContent += `    <path d="${svgPath}" fill="${stroke}" opacity="${opacity}" />\n`;
+          svgContent += `  </g>\n`;
         }
         break;
       }

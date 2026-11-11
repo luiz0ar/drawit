@@ -18,6 +18,7 @@ import {
 import { CanvasRenderer } from './renderer';
 import { findClosestAnchor, computeAnchorWorldPosition, AnchorPosition } from './anchors';
 import { IT_COMPONENTS } from './components';
+import { normalizeFreehandPoints, scaleFreehandPoints } from './freehand';
 
 export type Tool =
   | 'select'
@@ -251,8 +252,8 @@ export class CanvasEngine {
       fontFamily === 'mono'
         ? 'monospace'
         : fontFamily === 'serif'
-        ? 'serif'
-        : 'sans-serif';
+          ? 'serif'
+          : 'sans-serif';
     this.ctx.save();
     this.ctx.font = `${fontSize}px ${fontFam}`;
     const lines = (text || 'Text').split('\n');
@@ -1045,6 +1046,7 @@ export class CanvasEngine {
       this.pushHistorySnapshot();
       this.isCreatingElement = true;
       const strokeColor = this.theme === 'dark' ? '#f3f4f6' : '#1f2937';
+      const initialPressure = e.pressure > 0 ? e.pressure : 0.5;
       this.activeElement = {
         id: `free-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         type: 'freehand',
@@ -1059,13 +1061,13 @@ export class CanvasEngine {
         style: {
           strokeColor,
           fillColor: 'transparent',
-          strokeWidth: 3,
+          strokeWidth: 2,
           strokeStyle: 'solid',
           opacity: 100,
           effect: { type: 'none', intensity: 0 },
         },
         version: 1,
-        points: [[0, 0, e.pressure || 0.5]],
+        points: [[0, 0, initialPressure]],
       };
       this.elements.push(this.activeElement);
       this.selectedIds.clear();
@@ -1326,6 +1328,8 @@ export class CanvasEngine {
           const scaleH = el.height / Math.max(10, init.height);
           const scale = (scaleW + scaleH) / 2;
           (el as any).fontSize = Math.max(8, Math.min(120, Math.round(initFontSize * scale)));
+        } else if (el.type === 'freehand') {
+          scaleFreehandPoints(el as any, init as any, el.width, el.height);
         }
       }
 
@@ -1375,10 +1379,14 @@ export class CanvasEngine {
       const fh = this.activeElement as any;
       const relX = currentWorld.x - fh.x;
       const relY = currentWorld.y - fh.y;
-      fh.points.push([relX, relY, e.pressure || 0.5]);
-      fh.width = Math.max(fh.width, Math.abs(relX));
-      fh.height = Math.max(fh.height, Math.abs(relY));
-      this.isDirty = true;
+      const pts = fh.points;
+      const lastPt = pts[pts.length - 1];
+      if (!lastPt || Math.hypot(relX - lastPt[0], relY - lastPt[1]) >= 1) {
+        fh.points.push([relX, relY, e.pressure > 0 ? e.pressure : 0.5]);
+        fh.width = Math.max(fh.width, Math.abs(relX));
+        fh.height = Math.max(fh.height, Math.abs(relY));
+        this.isDirty = true;
+      }
       return;
     }
 
@@ -1543,7 +1551,10 @@ export class CanvasEngine {
       this.isCreatingElement = false;
 
       if (this.activeElement) {
-        if (this.activeElement.type === 'arrow') {
+        if (this.activeElement.type === 'freehand') {
+          normalizeFreehandPoints(this.activeElement as any);
+          this.selectedIds.clear();
+        } else if (this.activeElement.type === 'arrow') {
           const arrow = this.activeElement as any;
           if (Array.isArray(arrow.points) && arrow.points.length >= 2) {
             const first = arrow.points[0];
@@ -1552,7 +1563,7 @@ export class CanvasEngine {
               arrow.points[arrow.points.length - 1] = { x: first.x + 100, y: first.y };
             }
           }
-        } else if (this.activeElement.type !== 'freehand') {
+        } else {
           if (this.activeElement.width < 0) {
             this.activeElement.x += this.activeElement.width;
             this.activeElement.width = Math.abs(this.activeElement.width);
@@ -1573,8 +1584,10 @@ export class CanvasEngine {
         this.activeElement = null;
       }
 
-      this.activeTool = 'select';
-      this.callbacks.onToolChange?.('select');
+      if (this.activeTool !== 'freehand') {
+        this.activeTool = 'select';
+        this.callbacks.onToolChange?.('select');
+      }
     }
 
     if (this.isDraggingElement) {
@@ -1666,6 +1679,11 @@ export class CanvasEngine {
     if (e.key === 's' || e.key === 'S') this.setTool('sticky');
     if (e.key === 'p' || e.key === 'P') this.setTool('freehand');
     if (e.key === 'e' || e.key === 'E') this.setTool('eraser');
+    if (e.key === 'Escape') {
+      if (this.activeTool !== 'select') {
+        this.setTool('select');
+      }
+    }
   };
 
   private onKeyUp = (e: KeyboardEvent) => {

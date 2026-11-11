@@ -131,14 +131,10 @@ pub async fn refresh(
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
 
-    let (response, new_raw_refresh) = auth_service
-        .refresh(raw_refresh_token, user_agent)
-        .await?;
+    let (response, new_raw_refresh) = auth_service.refresh(raw_refresh_token, user_agent).await?;
 
-    let cookie_header = build_refresh_cookie(
-        &new_raw_refresh,
-        state.config.refresh_token_expiration_days,
-    );
+    let cookie_header =
+        build_refresh_cookie(&new_raw_refresh, state.config.refresh_token_expiration_days);
 
     Ok((
         StatusCode::OK,

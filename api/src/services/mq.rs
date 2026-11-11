@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use lapin::{
-    options::{BasicPublishOptions, ConfirmSelectOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions},
+    options::{
+        BasicPublishOptions, ConfirmSelectOptions, ExchangeDeclareOptions, QueueBindOptions,
+        QueueDeclareOptions,
+    },
     types::FieldTable,
     BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind,
 };
@@ -138,7 +141,9 @@ impl RabbitMqPublisher {
                 queue_args,
             )
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to declare verification queue: {e}")))?;
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to declare verification queue: {e}"))
+            })?;
 
         channel
             .queue_bind(
@@ -189,7 +194,9 @@ impl MessagePublisher for RabbitMqPublisher {
             .await
             .map_err(|e| AppError::Internal(format!("Failed to publish AMQP message: {e}")))?
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to receive AMQP publisher confirm: {e}")))?;
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to receive AMQP publisher confirm: {e}"))
+            })?;
 
         if confirmation.is_nack() {
             error!(
@@ -197,7 +204,9 @@ impl MessagePublisher for RabbitMqPublisher {
                 user_id = user_id,
                 "AMQP message received NACK from broker"
             );
-            return Err(AppError::Internal("AMQP message was not acknowledged by broker".to_string()));
+            return Err(AppError::Internal(
+                "AMQP message was not acknowledged by broker".to_string(),
+            ));
         }
 
         info!(
@@ -232,4 +241,3 @@ impl MessagePublisher for MockPublisher {
         Ok(())
     }
 }
-

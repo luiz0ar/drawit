@@ -3,6 +3,11 @@ import { ViewportTransform, worldToScreen } from './coordinates';
 import { IT_COMPONENTS } from './components';
 import { getElementAnchors } from './anchors';
 import { getDefaultCurveControlPoint } from './hitTest';
+import {
+  getFreeDrawOptions,
+  getFreeDrawStrokePoints,
+  getFreeDrawPath2D,
+} from './freehand';
 
 /**
  * High-performance imperative 2D renderer.
@@ -519,15 +524,33 @@ export class CanvasRenderer {
 
       case 'freehand': {
         const pts: [number, number, number?][] = (element as any).points || [];
-        if (pts.length > 1) {
+        if (pts.length === 0) break;
+
+        ctx.fillStyle = element.style.strokeColor;
+        const strokeWidth = element.style.strokeWidth || 2;
+        const baseSize = Math.max(3, strokeWidth * 3.5);
+
+        if (pts.length === 1) {
           ctx.beginPath();
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.moveTo(element.x + pts[0][0], element.y + pts[0][1]);
-          for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(element.x + pts[i][0], element.y + pts[i][1]);
-          }
-          ctx.stroke();
+          ctx.arc(
+            element.x + pts[0][0],
+            element.y + pts[0][1],
+            baseSize / 2,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          break;
+        }
+
+        const options = getFreeDrawOptions(strokeWidth, true);
+        const strokePoints = getFreeDrawStrokePoints(pts, options);
+        if (strokePoints.length > 0) {
+          ctx.save();
+          ctx.translate(element.x, element.y);
+          const path = getFreeDrawPath2D(strokePoints);
+          ctx.fill(path);
+          ctx.restore();
         }
         break;
       }

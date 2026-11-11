@@ -174,8 +174,8 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
         </div>
       )}
 
-      {/* Fill Color - Hidden for text, arrow and line */}
-      {!isTextOnly && primary.type !== 'arrow' && primary.type !== 'line' && (
+      {/* Fill Color - Hidden for text, arrow, line, and freehand */}
+      {!isTextOnly && primary.type !== 'arrow' && primary.type !== 'line' && primary.type !== 'freehand' && (
         <div className="space-y-1.5">
           <label className="text-[11px] font-medium text-muted-foreground block">
             Fill Color
@@ -304,8 +304,8 @@ export const StyleInspector: React.FC<StyleInspectorProps> = ({
         </div>
       )}
 
-      {/* Visual Effects (RNF-S05) - Hidden for text */}
-      {!isTextOnly && (
+      {/* Visual Effects (RNF-S05) - Hidden for text and freehand */}
+      {!isTextOnly && primary.type !== 'freehand' && (
         <div className="space-y-1">
           <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
             <Sparkles className="w-3 h-3" />

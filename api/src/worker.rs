@@ -45,7 +45,10 @@ impl EmailWorker {
     }
 
     pub async fn run(self) {
-        info!("Email worker consumer started listening on queue: {}", EMAIL_VERIFICATION_QUEUE);
+        info!(
+            "Email worker consumer started listening on queue: {}",
+            EMAIL_VERIFICATION_QUEUE
+        );
 
         let mut consumer = match self
             .channel
@@ -64,7 +67,9 @@ impl EmailWorker {
             }
         };
 
-        let verifications_col = self.db.collection::<EmailVerification>("email_verifications");
+        let verifications_col = self
+            .db
+            .collection::<EmailVerification>("email_verifications");
 
         while let Some(delivery_res) = consumer.next().await {
             match delivery_res {
@@ -159,7 +164,11 @@ impl EmailWorker {
                                 raw_token
                             );
 
-                            match self.mailer.send_verification_email(&event.email, &link).await {
+                            match self
+                                .mailer
+                                .send_verification_email(&event.email, &link)
+                                .await
+                            {
                                 Ok(()) => {
                                     info!(
                                         verification_id = %event.verification_id,

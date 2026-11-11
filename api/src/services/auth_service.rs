@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use chrono::{Duration, Utc};
 use mongodb::{
     bson::{doc, DateTime as BsonDateTime},
     Collection, Database,
 };
+use std::sync::Arc;
 
 use crate::{
     dto::{
@@ -79,8 +79,9 @@ impl AuthService {
         {
             invalid_params.push(InvalidParam {
                 name: "username".to_string(),
-                reason: "Username can only contain letters, numbers, dots, hyphens, and underscores."
-                    .to_string(),
+                reason:
+                    "Username can only contain letters, numbers, dots, hyphens, and underscores."
+                        .to_string(),
             });
         }
         if email.is_empty() || !Self::is_valid_email(&email) {
@@ -148,8 +149,9 @@ impl AuthService {
             .await?;
 
         Ok(RegisterResponse {
-            message: "Account created successfully. Please check your email to verify your account."
-                .to_string(),
+            message:
+                "Account created successfully. Please check your email to verify your account."
+                    .to_string(),
             email: new_user.email,
         })
     }

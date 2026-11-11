@@ -104,15 +104,15 @@ impl Mailer for SmtpMailer {
             )
             .map_err(|e| AppError::Internal(format!("Failed to build email message: {e}")))?;
 
-        self.transport
-            .send(email)
-            .await
-            .map_err(|e| {
-                error!(to = to_email, "Failed to send email via SMTP: {e}");
-                AppError::Internal(format!("SMTP delivery error: {e}"))
-            })?;
+        self.transport.send(email).await.map_err(|e| {
+            error!(to = to_email, "Failed to send email via SMTP: {e}");
+            AppError::Internal(format!("SMTP delivery error: {e}"))
+        })?;
 
-        info!(to = to_email, "Verification email successfully dispatched via SMTP");
+        info!(
+            to = to_email,
+            "Verification email successfully dispatched via SMTP"
+        );
         Ok(())
     }
 }
@@ -135,4 +135,3 @@ impl Mailer for MockMailer {
         Ok(())
     }
 }
-

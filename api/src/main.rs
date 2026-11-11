@@ -1,9 +1,7 @@
 use drawit_api::{
     create_router, db,
     services::{
-        mailer::SmtpMailer,
-        mq::RabbitMqPublisher,
-        verification_service::VerificationService,
+        mailer::SmtpMailer, mq::RabbitMqPublisher, verification_service::VerificationService,
     },
     worker::EmailWorker,
     AppConfig, AppState,

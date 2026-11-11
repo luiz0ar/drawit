@@ -152,12 +152,17 @@ impl IntoResponse for AppError {
                 )
                 .with_extension("email", serde_json::json!(email)),
             ),
-            AppError::TooManyRequests { retry_after_seconds } => {
+            AppError::TooManyRequests {
+                retry_after_seconds,
+            } => {
                 let problem = ProblemDetails::new(
                     429,
                     "TOO_MANY_REQUESTS",
                     "Too Many Requests",
-                    format!("Please wait {} seconds before retrying.", retry_after_seconds),
+                    format!(
+                        "Please wait {} seconds before retrying.",
+                        retry_after_seconds
+                    ),
                     "",
                 )
                 .with_extension("retryAfter", serde_json::json!(retry_after_seconds));
