@@ -51,6 +51,7 @@ export interface GeometricElement extends BaseElement {
 export interface ArrowElement extends BaseElement {
   type: 'arrow';
   points: { x: number; y: number }[];
+  controlPoint?: { x: number; y: number };
   startBinding?: { elementId: string; anchor: string };
   endBinding?: { elementId: string; anchor: string };
   startArrowhead?: 'none' | 'arrow' | 'dot';

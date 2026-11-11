@@ -10,6 +10,8 @@ import {
 import {
   hitTestElement,
   hitTestSelectionHandle,
+  hitTestArrowHandle,
+  ArrowHandle,
   elementIntersectsMarquee,
   ResizeHandle,
 } from './hitTest';
@@ -73,6 +75,9 @@ export class CanvasEngine {
   private marqueeBox: { startX: number; startY: number; currentX: number; currentY: number } | null = null;
   private activeResizeHandle: ResizeHandle | null = null;
   private resizeInitialElement: CanvasElement | null = null;
+  private isDraggingArrowHandle = false;
+  private activeArrowHandle: ArrowHandle | null = null;
+  private activeArrowInitial: CanvasElement | null = null;
   private isSpacePressed = false;
 
   private hoveredAnchor: { elementId: string; anchor: AnchorPosition; point: WorldPoint } | null =
@@ -579,7 +584,11 @@ export class CanvasEngine {
     // 2. Elements
     this.renderer.applyViewport(this.viewport);
     for (const el of this.elements) {
-      this.renderer.renderElement(el);
+      if (el.type === 'arrow') {
+        this.renderer.renderArrow(el, this.theme);
+      } else {
+        this.renderer.renderElement(el);
+      }
     }
 
     // 3. Magnetic Anchors on hovered target
@@ -590,10 +599,14 @@ export class CanvasEngine {
       }
     }
 
-    // 4. Bounding Box for Selection
+    // 4. Selection Box or Arrow Handles (Excalidraw style)
     for (const el of this.elements) {
       if (this.selectedIds.has(el.id)) {
-        this.renderer.renderSelectionBox(el, this.viewport);
+        if (el.type === 'arrow') {
+          this.renderer.renderArrowSelection(el, this.viewport);
+        } else {
+          this.renderer.renderSelectionBox(el, this.viewport);
+        }
       }
     }
 
@@ -645,6 +658,10 @@ export class CanvasEngine {
       this.canvas.style.cursor = 'move';
       return;
     }
+    if (this.isDraggingArrowHandle) {
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
     if (this.isResizingElement && this.activeResizeHandle) {
       this.canvas.style.cursor = this.getResizeCursor(this.activeResizeHandle);
       return;
@@ -654,10 +671,18 @@ export class CanvasEngine {
       if (this.selectedIds.size === 1) {
         const selectedEl = this.getSelectedElements()[0];
         if (selectedEl && !selectedEl.locked) {
-          const handle = hitTestSelectionHandle(screenPoint, selectedEl, this.viewport);
-          if (handle) {
-            this.canvas.style.cursor = this.getResizeCursor(handle);
-            return;
+          if (selectedEl.type === 'arrow') {
+            const arrowHandle = hitTestArrowHandle(screenPoint, selectedEl, this.viewport);
+            if (arrowHandle) {
+              this.canvas.style.cursor = 'crosshair';
+              return;
+            }
+          } else {
+            const handle = hitTestSelectionHandle(screenPoint, selectedEl, this.viewport);
+            if (handle) {
+              this.canvas.style.cursor = this.getResizeCursor(handle);
+              return;
+            }
           }
         }
       }
@@ -833,17 +858,28 @@ export class CanvasEngine {
     }
 
     if (this.activeTool === 'select') {
-      // 1. Check if user clicked on a resize/rotate handle of a single selected element
+      // 1. Check if user clicked on a handle of a single selected element
       if (this.selectedIds.size === 1) {
         const selectedEl = this.getSelectedElements()[0];
         if (selectedEl && !selectedEl.locked) {
-          const handle = hitTestSelectionHandle(screenPoint, selectedEl, this.viewport);
-          if (handle) {
-            this.pushHistorySnapshot();
-            this.isResizingElement = true;
-            this.activeResizeHandle = handle;
-            this.resizeInitialElement = JSON.parse(JSON.stringify(selectedEl));
-            return;
+          if (selectedEl.type === 'arrow') {
+            const arrowHandle = hitTestArrowHandle(screenPoint, selectedEl, this.viewport);
+            if (arrowHandle) {
+              this.pushHistorySnapshot();
+              this.isDraggingArrowHandle = true;
+              this.activeArrowHandle = arrowHandle;
+              this.activeArrowInitial = JSON.parse(JSON.stringify(selectedEl));
+              return;
+            }
+          } else {
+            const handle = hitTestSelectionHandle(screenPoint, selectedEl, this.viewport);
+            if (handle) {
+              this.pushHistorySnapshot();
+              this.isResizingElement = true;
+              this.activeResizeHandle = handle;
+              this.resizeInitialElement = JSON.parse(JSON.stringify(selectedEl));
+              return;
+            }
           }
         }
       }
@@ -1300,6 +1336,42 @@ export class CanvasEngine {
       return;
     }
 
+    // Interactive Arrow Handle Dragging (Excalidraw style: start, end, and curve bend)
+    if (this.isDraggingArrowHandle && this.activeArrowHandle && this.activeArrowInitial) {
+      const arrow = this.elements.find((el) => el.id === this.activeArrowInitial!.id) as any;
+      if (!arrow || !Array.isArray(arrow.points)) return;
+
+      if (this.activeArrowHandle === 'arrow-start') {
+        const snap = findClosestAnchor(currentWorld, this.elements, arrow.id);
+        if (snap) {
+          this.hoveredAnchor = snap;
+          arrow.points[0] = { x: snap.point.x, y: snap.point.y };
+          arrow.startBinding = { elementId: snap.elementId, anchor: snap.anchor };
+        } else {
+          this.hoveredAnchor = null;
+          arrow.points[0] = { x: currentWorld.x, y: currentWorld.y };
+          arrow.startBinding = undefined;
+        }
+      } else if (this.activeArrowHandle === 'arrow-end') {
+        const snap = findClosestAnchor(currentWorld, this.elements, arrow.id);
+        if (snap) {
+          this.hoveredAnchor = snap;
+          arrow.points[arrow.points.length - 1] = { x: snap.point.x, y: snap.point.y };
+          arrow.endBinding = { elementId: snap.elementId, anchor: snap.anchor };
+        } else {
+          this.hoveredAnchor = null;
+          arrow.points[arrow.points.length - 1] = { x: currentWorld.x, y: currentWorld.y };
+          arrow.endBinding = undefined;
+        }
+      } else if (this.activeArrowHandle === 'arrow-mid') {
+        arrow.routing = 'curved';
+        arrow.controlPoint = { x: currentWorld.x, y: currentWorld.y };
+      }
+
+      this.isDirty = true;
+      return;
+    }
+
     // Creating freehand stroke
     if (this.isCreatingElement && this.activeElement && this.activeElement.type === 'freehand') {
       const fh = this.activeElement as any;
@@ -1352,9 +1424,15 @@ export class CanvasEngine {
 
           if (el.type === 'arrow' && Array.isArray((el as any).points)) {
             const arrow = el as any;
+            arrow.startBinding = undefined;
+            arrow.endBinding = undefined;
             for (const pt of arrow.points) {
               pt.x += deltaWorldX;
               pt.y += deltaWorldY;
+            }
+            if (arrow.controlPoint) {
+              arrow.controlPoint.x += deltaWorldX;
+              arrow.controlPoint.y += deltaWorldY;
             }
           }
         }
@@ -1449,6 +1527,17 @@ export class CanvasEngine {
       this.notifySelectionChange();
     }
 
+    if (this.isDraggingArrowHandle) {
+      this.isDraggingArrowHandle = false;
+      this.activeArrowHandle = null;
+      this.activeArrowInitial = null;
+      this.hoveredAnchor = null;
+      this.isDirty = true;
+      this.notifySelectionChange();
+      this.callbacks.onElementsChange?.(this.elements);
+      return;
+    }
+
     if (this.isResizingElement) {
       this.isResizingElement = false;
       this.activeResizeHandle = null;
@@ -1462,10 +1551,16 @@ export class CanvasEngine {
       this.isCreatingElement = false;
 
       if (this.activeElement) {
-        if (
-          this.activeElement.type !== 'arrow' &&
-          this.activeElement.type !== 'freehand'
-        ) {
+        if (this.activeElement.type === 'arrow') {
+          const arrow = this.activeElement as any;
+          if (Array.isArray(arrow.points) && arrow.points.length >= 2) {
+            const first = arrow.points[0];
+            const last = arrow.points[arrow.points.length - 1];
+            if (Math.hypot(last.x - first.x, last.y - first.y) < 8) {
+              arrow.points[arrow.points.length - 1] = { x: first.x + 100, y: first.y };
+            }
+          }
+        } else if (this.activeElement.type !== 'freehand') {
           if (this.activeElement.width < 0) {
             this.activeElement.x += this.activeElement.width;
             this.activeElement.width = Math.abs(this.activeElement.width);
@@ -1487,6 +1582,7 @@ export class CanvasEngine {
       }
 
       this.activeTool = 'select';
+      this.callbacks.onToolChange?.('select');
     }
 
     if (this.isDraggingElement) {

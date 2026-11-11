@@ -2,6 +2,7 @@ import { CanvasElement } from './types';
 import { ViewportTransform, worldToScreen } from './coordinates';
 import { IT_COMPONENTS } from './components';
 import { getElementAnchors } from './anchors';
+import { getDefaultCurveControlPoint } from './hitTest';
 
 /**
  * High-performance imperative 2D renderer.
@@ -113,9 +114,10 @@ export class CanvasRenderer {
   }
 
   /**
-   * Renders an arrow connector with straight, orthogonal (Manhattan), or curved routing.
+   * Renders an arrow connector with straight, orthogonal (Manhattan), or curved routing,
+   * featuring Excalidraw-style open chevron arrowheads and natural quadratic curvature.
    */
-  public renderArrow(element: CanvasElement) {
+  public renderArrow(element: CanvasElement, theme: 'dark' | 'light' = 'light') {
     const ctx = this.ctx;
     const arrow = element as any;
     const pts: { x: number; y: number }[] = arrow.points || [];
@@ -126,6 +128,8 @@ export class CanvasRenderer {
     ctx.strokeStyle = element.style.strokeColor;
     ctx.lineWidth = element.style.strokeWidth;
     ctx.globalAlpha = element.style.opacity / 100;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     if (element.style.strokeStyle === 'dashed') {
       ctx.setLineDash([8, 6]);
@@ -138,6 +142,9 @@ export class CanvasRenderer {
     const first = pts[0];
     const last = pts[pts.length - 1];
     let headAngle = Math.atan2(last.y - first.y, last.x - first.x);
+    let startAngle = Math.atan2(first.y - last.y, first.x - last.x);
+
+    let cp = arrow.controlPoint;
 
     ctx.beginPath();
     ctx.moveTo(first.x, first.y);
@@ -147,56 +154,159 @@ export class CanvasRenderer {
       ctx.lineTo(midX, first.y);
       ctx.lineTo(midX, last.y);
       ctx.lineTo(last.x, last.y);
-      headAngle = Math.atan2(0, last.x - midX);
+      headAngle = last.x !== midX ? Math.atan2(0, last.x - midX) : Math.atan2(last.y - first.y, 0);
+      startAngle = first.x !== midX ? Math.atan2(0, first.x - midX) : Math.atan2(first.y - last.y, 0);
     } else if (arrow.routing === 'curved') {
-      const midX = (first.x + last.x) / 2;
-      ctx.bezierCurveTo(midX, first.y, midX, last.y, last.x, last.y);
-      headAngle = Math.atan2(last.y - first.y, last.x - midX);
+      cp = arrow.controlPoint || getDefaultCurveControlPoint(first, last);
+      ctx.quadraticCurveTo(cp.x, cp.y, last.x, last.y);
+      headAngle = Math.atan2(last.y - cp.y, last.x - cp.x);
+      startAngle = Math.atan2(first.y - cp.y, first.x - cp.x);
     } else {
       for (let i = 1; i < pts.length; i++) {
         ctx.lineTo(pts[i].x, pts[i].y);
       }
       const prev = pts[pts.length - 2];
       headAngle = Math.atan2(last.y - prev.y, last.x - prev.x);
+      startAngle = Math.atan2(first.y - pts[1].y, first.x - pts[1].x);
     }
 
     ctx.stroke();
 
-    // Arrowhead at end
-    const HEAD_LEN = 12;
+    // Arrowheads (Excalidraw style: open chevron > with rounded caps)
+    const strokeWidth = element.style.strokeWidth || 2;
+    const arrowLength = Math.max(14, 12 + strokeWidth * 2.2);
+    const arrowAngle = Math.PI / 6; // 30 degrees
     ctx.setLineDash([]);
-    ctx.fillStyle = element.style.strokeColor;
-    ctx.beginPath();
-    ctx.moveTo(last.x, last.y);
-    ctx.lineTo(
-      last.x - HEAD_LEN * Math.cos(headAngle - Math.PI / 6),
-      last.y - HEAD_LEN * Math.sin(headAngle - Math.PI / 6)
-    );
-    ctx.lineTo(
-      last.x - HEAD_LEN * Math.cos(headAngle + Math.PI / 6),
-      last.y - HEAD_LEN * Math.sin(headAngle + Math.PI / 6)
-    );
-    ctx.closePath();
-    ctx.fill();
 
-    // Optional label on arrow midpoint
+    // End Arrowhead
+    if (arrow.endArrowhead === 'dot') {
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, 3.5 + strokeWidth, 0, Math.PI * 2);
+      ctx.fillStyle = element.style.strokeColor;
+      ctx.fill();
+    } else if (arrow.endArrowhead !== 'none') {
+      ctx.beginPath();
+      ctx.moveTo(
+        last.x - arrowLength * Math.cos(headAngle - arrowAngle),
+        last.y - arrowLength * Math.sin(headAngle - arrowAngle)
+      );
+      ctx.lineTo(last.x, last.y);
+      ctx.lineTo(
+        last.x - arrowLength * Math.cos(headAngle + arrowAngle),
+        last.y - arrowLength * Math.sin(headAngle + arrowAngle)
+      );
+      ctx.stroke();
+    }
+
+    // Start Arrowhead
+    if (arrow.startArrowhead === 'dot') {
+      ctx.beginPath();
+      ctx.arc(first.x, first.y, 3.5 + strokeWidth, 0, Math.PI * 2);
+      ctx.fillStyle = element.style.strokeColor;
+      ctx.fill();
+    } else if (arrow.startArrowhead === 'arrow') {
+      ctx.beginPath();
+      ctx.moveTo(
+        first.x - arrowLength * Math.cos(startAngle - arrowAngle),
+        first.y - arrowLength * Math.sin(startAngle - arrowAngle)
+      );
+      ctx.lineTo(first.x, first.y);
+      ctx.lineTo(
+        first.x - arrowLength * Math.cos(startAngle + arrowAngle),
+        first.y - arrowLength * Math.sin(startAngle + arrowAngle)
+      );
+      ctx.stroke();
+    }
+
+    // Optional label on arrow midpoint (Excalidraw clean badge style)
     if (element.label) {
-      const mx = (first.x + last.x) / 2;
-      const my = (first.y + last.y) / 2;
+      const mx =
+        arrow.routing === 'curved' && cp
+          ? 0.25 * first.x + 0.5 * cp.x + 0.25 * last.x
+          : (first.x + last.x) / 2;
+      const my =
+        arrow.routing === 'curved' && cp
+          ? 0.25 * first.y + 0.5 * cp.y + 0.25 * last.y
+          : (first.y + last.y) / 2;
+
       ctx.font = '600 12px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const metrics = ctx.measureText(element.label);
-      const pad = 6;
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(
-        mx - metrics.width / 2 - pad,
-        my - 10,
-        metrics.width + pad * 2,
-        20
-      );
-      ctx.fillStyle = '#ffffff';
+      const padX = 8;
+      const padY = 4;
+      const badgeW = metrics.width + padX * 2;
+      const badgeH = 12 + padY * 2;
+
+      const badgeBg = theme === 'dark' ? '#0f172a' : '#ffffff';
+      const badgeBorder = theme === 'dark' ? '#334155' : '#cbd5e1';
+      const textColor = theme === 'dark' ? '#f8fafc' : '#0f172a';
+
+      ctx.save();
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0,0,0,0.12)';
+      ctx.fillStyle = badgeBg;
+      ctx.strokeStyle = badgeBorder;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(mx - badgeW / 2, my - badgeH / 2, badgeW, badgeH, 4);
+      } else {
+        ctx.rect(mx - badgeW / 2, my - badgeH / 2, badgeW, badgeH);
+      }
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = textColor;
       ctx.fillText(element.label, mx, my);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders Excalidraw-style handles for selected arrows (start, end, and curve control midpoint).
+   */
+  public renderArrowSelection(element: CanvasElement, viewport: ViewportTransform) {
+    if (element.type !== 'arrow') return;
+
+    const arrow = element as any;
+    const pts: { x: number; y: number }[] = arrow.points || [];
+    if (pts.length < 2) return;
+
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    const mid =
+      arrow.routing === 'curved'
+        ? (arrow.controlPoint || getDefaultCurveControlPoint(first, last))
+        : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+
+    const screenStart = worldToScreen(first, viewport);
+    const screenEnd = worldToScreen(last, viewport);
+    const screenMid = worldToScreen(mid, viewport);
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const accent = element.locked ? '#f59e0b' : '#2563eb';
+
+    // Excalidraw-style circular handles
+    const handles = [
+      { pt: screenStart, r: 5, fill: '#ffffff', stroke: accent },
+      { pt: screenEnd, r: 5, fill: '#ffffff', stroke: accent },
+      { pt: screenMid, r: 4, fill: '#ffffff', stroke: accent },
+    ];
+
+    for (const h of handles) {
+      ctx.beginPath();
+      ctx.arc(h.pt.x, h.pt.y, h.r, 0, Math.PI * 2);
+      ctx.fillStyle = h.fill;
+      ctx.fill();
+      ctx.strokeStyle = h.stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
 
     ctx.restore();

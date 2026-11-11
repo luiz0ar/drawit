@@ -185,9 +185,58 @@ function hitTestTriangle(localPoint: WorldPoint, element: CanvasElement): boolea
   return a >= 0 && a <= 1 && b >= 0 && b <= 1 && c >= 0 && c <= 1;
 }
 
+export function getDefaultCurveControlPoint(p1: WorldPoint, p2: WorldPoint): WorldPoint {
+  const mx = (p1.x + p2.x) / 2;
+  const my = (p1.y + p2.y) / 2;
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1) return { x: mx, y: my };
+  const nx = -dy / dist;
+  const ny = dx / dist;
+  const offset = dist * 0.15;
+  return { x: mx + nx * offset, y: my + ny * offset };
+}
+
 function hitTestArrow(point: WorldPoint, element: CanvasElement, threshold = 8): boolean {
-  const pts: { x: number; y: number }[] = (element as any).points || [];
+  const arrow = element as any;
+  const pts: { x: number; y: number }[] = arrow.points || [];
   if (pts.length < 2) return false;
+
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+
+  if (arrow.routing === 'curved') {
+    const cp = arrow.controlPoint || getDefaultCurveControlPoint(first, last);
+    let prev = first;
+    const STEPS = 16;
+    for (let i = 1; i <= STEPS; i++) {
+      const t = i / STEPS;
+      const cur = {
+        x: (1 - t) * (1 - t) * first.x + 2 * (1 - t) * t * cp.x + t * t * last.x,
+        y: (1 - t) * (1 - t) * first.y + 2 * (1 - t) * t * cp.y + t * t * last.y,
+      };
+      if (distToSegment(point, prev, cur) <= threshold) {
+        return true;
+      }
+      prev = cur;
+    }
+    return false;
+  }
+
+  if (arrow.routing === 'orthogonal') {
+    const midX = (first.x + last.x) / 2;
+    const p1 = first;
+    const p2 = { x: midX, y: first.y };
+    const p3 = { x: midX, y: last.y };
+    const p4 = last;
+    return (
+      distToSegment(point, p1, p2) <= threshold ||
+      distToSegment(point, p2, p3) <= threshold ||
+      distToSegment(point, p3, p4) <= threshold
+    );
+  }
+
   for (let i = 0; i < pts.length - 1; i++) {
     if (distToSegment(point, pts[i], pts[i + 1]) <= threshold) {
       return true;
@@ -281,5 +330,47 @@ export function hitTestSelectionHandle(
       return h.id;
     }
   }
+  return null;
+}
+
+export type ArrowHandle = 'arrow-start' | 'arrow-end' | 'arrow-mid';
+
+/**
+ * Hit-tests the start, end, and midpoint handles of a selected arrow in screen space.
+ */
+export function hitTestArrowHandle(
+  screenPoint: ScreenPoint,
+  element: CanvasElement,
+  viewport: ViewportTransform
+): ArrowHandle | null {
+  if (element.type !== 'arrow' || element.locked) return null;
+
+  const arrow = element as any;
+  const pts: { x: number; y: number }[] = arrow.points || [];
+  if (pts.length < 2) return null;
+
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const mid =
+    arrow.routing === 'curved'
+      ? (arrow.controlPoint || getDefaultCurveControlPoint(first, last))
+      : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+
+  const screenStart = worldToScreen(first, viewport);
+  const screenEnd = worldToScreen(last, viewport);
+  const screenMid = worldToScreen(mid, viewport);
+
+  const HIT_RADIUS = 10;
+
+  if (Math.hypot(screenPoint.x - screenStart.x, screenPoint.y - screenStart.y) <= HIT_RADIUS) {
+    return 'arrow-start';
+  }
+  if (Math.hypot(screenPoint.x - screenEnd.x, screenPoint.y - screenEnd.y) <= HIT_RADIUS) {
+    return 'arrow-end';
+  }
+  if (Math.hypot(screenPoint.x - screenMid.x, screenPoint.y - screenMid.y) <= HIT_RADIUS) {
+    return 'arrow-mid';
+  }
+
   return null;
 }

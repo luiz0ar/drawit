@@ -1,5 +1,6 @@
 import { CanvasElement } from '../engine/types';
 import { IT_COMPONENTS } from '../engine/components';
+import { getDefaultCurveControlPoint } from '../engine/hitTest';
 
 export interface ExportBounds {
   minX: number;
@@ -129,13 +130,47 @@ export function exportToSvgString(
 
       case 'arrow': {
         const arrow = el as any;
-        if (Array.isArray(arrow.points) && arrow.points.length >= 2) {
-          const d = arrow.points.reduce(
-            (acc: string, pt: { x: number; y: number }, idx: number) =>
-              idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`,
-            ''
-          );
-          svgContent += `  <path d="${d}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}" />\n`;
+        const pts: { x: number; y: number }[] = arrow.points || [];
+        if (pts.length >= 2) {
+          const first = pts[0];
+          const last = pts[pts.length - 1];
+          let headAngle = Math.atan2(last.y - first.y, last.x - first.x);
+          let pathD = '';
+
+          if (arrow.routing === 'orthogonal') {
+            const midX = (first.x + last.x) / 2;
+            pathD = `M ${first.x} ${first.y} L ${midX} ${first.y} L ${midX} ${last.y} L ${last.x} ${last.y}`;
+            headAngle = last.x !== midX ? Math.atan2(0, last.x - midX) : Math.atan2(last.y - first.y, 0);
+          } else if (arrow.routing === 'curved') {
+            const cp = arrow.controlPoint || getDefaultCurveControlPoint(first, last);
+            pathD = `M ${first.x} ${first.y} Q ${cp.x} ${cp.y} ${last.x} ${last.y}`;
+            headAngle = Math.atan2(last.y - cp.y, last.x - cp.x);
+          } else {
+            pathD = pts.reduce(
+              (acc: string, pt: { x: number; y: number }, idx: number) =>
+                idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`,
+              ''
+            );
+            const prev = pts[pts.length - 2];
+            headAngle = Math.atan2(last.y - prev.y, last.x - prev.x);
+          }
+
+          svgContent += `  <path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}" />\n`;
+
+          // Chevron arrowhead (Excalidraw style)
+          const arrowLength = Math.max(14, 12 + strokeWidth * 2.2);
+          const arrowAngle = Math.PI / 6;
+          const x1 = last.x - arrowLength * Math.cos(headAngle - arrowAngle);
+          const y1 = last.y - arrowLength * Math.sin(headAngle - arrowAngle);
+          const x2 = last.x - arrowLength * Math.cos(headAngle + arrowAngle);
+          const y2 = last.y - arrowLength * Math.sin(headAngle + arrowAngle);
+          svgContent += `  <path d="M ${x1} ${y1} L ${last.x} ${last.y} L ${x2} ${y2}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}" />\n`;
+
+          if (arrow.label) {
+            const mx = (first.x + last.x) / 2;
+            const my = (first.y + last.y) / 2;
+            svgContent += `  <text x="${mx}" y="${my}" font-family="sans-serif" font-size="12" font-weight="600" text-anchor="middle" dominant-baseline="middle" fill="${stroke}">${arrow.label}</text>\n`;
+          }
         }
         break;
       }
